@@ -1,0 +1,1515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>C$K4 Chat — Admin Panel 👑</title>
+<style>
+  :root {
+    --bg: #FBF8F0; --panel: #FFFFFF; --panel2: #F6F1E4; --border: rgba(184,147,90,.38);
+    --text: #241C0E; --muted: #8A7A55; --accent: #B8913F; --accent2: #96702F;
+    --danger: #c62828; --warn: #b8860b; --info: #2563eb;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+  body { background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* ---------- LOGIN ---------- */
+  #loginScreen {
+    display: flex; align-items: center; justify-content: center; min-height: 100vh;
+    background: radial-gradient(circle at 30% 20%, #F3E3BC 0%, #FBF8F0 60%);
+  }
+  .login-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+    padding: 36px; width: 380px; max-width: 92vw; box-shadow: 0 24px 60px rgba(140,110,60,.25);
+  }
+  .login-card h1 { font-size: 26px; text-align: center; margin-bottom: 4px; }
+  .login-card .sub { color: var(--muted); text-align: center; font-size: 13px; margin-bottom: 24px; }
+  .login-card label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; font-weight: 600; }
+  .login-card input {
+    width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--panel2); color: var(--text); font-size: 14px; outline: none;
+  }
+  .login-card input:focus { border-color: var(--accent); }
+  .btn {
+    display: inline-block; padding: 11px 18px; border-radius: 10px; border: none; cursor: pointer;
+    background: linear-gradient(120deg, #EFCF8F 0%, #D9B872 45%, #B8935A 100%); color: #241C0E; font-weight: 700; font-size: 14px; transition: .15s;
+    box-shadow: 0 4px 14px rgba(217,184,114,.4);
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .btn-full { width: 100%; margin-top: 18px; }
+  .btn-sm { padding: 5px 11px; font-size: 12px; border-radius: 7px; }
+  .btn-danger { background: linear-gradient(120deg, #EFCF8F 0%, #D9B872 45%, #B8935A 100%); color: #b91c1c; border: 1px solid #e53935; }
+  .btn-ghost { background: linear-gradient(120deg, rgba(239,207,143,.35), rgba(184,147,90,.30)); border: 1px solid var(--accent); color: #7a5c1e; }
+  .err { color: var(--danger); font-size: 13px; text-align: center; margin-top: 12px; min-height: 18px; }
+  /* ---------- v5.4.0: status pills + form rows ---------- */
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 800; letter-spacing: .5px; background: rgba(184,147,90,.14); color: #7a5c1e; border: 1px solid rgba(184,147,90,.3); }
+  .pill-ok { background: rgba(74,222,128,.18); color: #15803d; }
+  .pill-warn { background: rgba(245,158,11,.18); color: #b45309; }
+  .chk-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); margin: 12px 0; cursor: pointer; }
+  .chk-row input { width: auto; accent-color: var(--accent); }
+  .modal label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; font-weight: 700; }
+  .modal textarea { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); font-size: 14px; outline: none; resize: vertical; }
+  .modal textarea:focus { border-color: var(--accent); }
+
+  /* ---------- RESPONSIVE / MOBILE (v5.1) ---------- */
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+  * { -webkit-overflow-scrolling: touch; }
+  input, select, textarea { font-size: 16px; } /* iOS zoom fix */
+  button { touch-action: manipulation; }
+  .tbl-wrap { -webkit-overflow-scrolling: touch; }
+  @media (max-width: 900px) {
+    body { padding: 0; }
+    header { padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top)); flex-wrap: wrap; gap: 8px; }
+    header .logo { font-size: 17px; }
+    nav { position: sticky; top: 54px; padding: 8px 10px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    nav::-webkit-scrollbar { display: none; }
+    nav button { font-size: 12.5px; padding: 8px 12px; }
+    main { padding: 14px 10px; max-width: 100%; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .stat-card { padding: 14px; }
+    .stat-card .s-num { font-size: 24px; }
+    table { font-size: 12px; min-width: 560px; } /* horizontal scroll */
+    th, td { padding: 9px 10px; }
+    .truncate { max-width: 150px; }
+    .login-card { padding: 26px 18px; width: 100%; max-width: 92vw; margin: 14px; }
+  }
+  @media (max-width: 480px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stat-card .s-num { font-size: 21px; }
+    .truncate { max-width: 110px; }
+    h2 { font-size: 17px; }
+    .btn-sm { padding: 7px 10px; font-size: 11.5px; }
+  }
+  .hint { background: var(--panel2); border: 1px dashed var(--border); border-radius: 10px; padding: 10px 12px; margin-top: 16px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .hint b { color: var(--accent); }
+
+  /* ---------- v5.3.1: MODAL + GROUP/CHANNEL CONTROL UI ---------- */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.66); display: none; align-items: flex-start; justify-content: center; z-index: 90; padding: 40px 14px; overflow-y: auto; }
+  .overlay.active { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 520px; padding: 22px; position: relative; }
+  .modal h3 { margin: 0 0 14px; font-size: 18px; }
+  .modal .close-x { position: absolute; top: 10px; right: 14px; background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; }
+  .modal label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; font-weight: 600; }
+  .modal input, .modal textarea {
+    width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel2); color: var(--text); font-size: 14px; outline: none; font-family: inherit;
+  }
+  .modal textarea { min-height: 70px; resize: vertical; }
+  .modal .actions-row { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+  .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .member-chip { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; margin-bottom: 7px; background: var(--panel2); font-size: 13px; }
+  .member-chip .mc-name { flex: 1; font-weight: 600; }
+  .member-chip .mc-role { font-size: 11px; color: var(--muted); }
+  .toolbar-btns { display: flex; gap: 8px; align-items: center; margin: 10px 0 4px; flex-wrap: wrap; }
+  .toolbar-btns input { flex: 1; min-width: 160px; }
+
+  /* ---------- PANEL ---------- */
+  #adminApp { display: none; }
+  header {
+    background: var(--panel); border-bottom: 1px solid var(--border); padding: 14px 26px;
+    display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 50;
+  }
+  header .logo { font-size: 20px; font-weight: 800; }
+  header .logo span { color: var(--accent); }
+  header .who { margin-left: auto; color: var(--muted); font-size: 13px; }
+  header button { margin-left: 10px; }
+
+  nav {
+    display: flex; gap: 4px; padding: 10px 26px; background: var(--panel); border-bottom: 1px solid var(--border);
+    overflow-x: auto; position: sticky; top: 59px; z-index: 49;
+  }
+  nav button {
+    padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; background: transparent;
+    color: var(--muted); font-size: 13.5px; font-weight: 600; white-space: nowrap; transition: .15s;
+  }
+  nav button:hover { color: var(--text); background: var(--panel2); }
+  nav button.active { background: linear-gradient(120deg, #EFCF8F, #D9B872); color: #241C0E; box-shadow: 0 3px 10px rgba(217,184,114,.4); }
+
+  main { padding: 24px 26px; max-width: 1280px; margin: 0 auto; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  h2 { font-size: 19px; margin-bottom: 16px; }
+  h2 small { color: var(--muted); font-weight: 400; font-size: 13px; }
+
+  /* stat cards */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 26px; }
+  .stat-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px;
+  }
+  .stat-card .s-ico { font-size: 26px; }
+  .stat-card .s-num { font-size: 30px; font-weight: 800; margin: 6px 0 2px; }
+  .stat-card .s-label { color: var(--muted); font-size: 12.5px; }
+  .stat-card.green .s-num { color: var(--accent); }
+  .stat-card.blue .s-num { color: var(--info); }
+  .stat-card.red .s-num { color: var(--danger); }
+  .stat-card.yellow .s-num { color: var(--warn); }
+
+  /* tables */
+  .tbl-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; padding: 11px 14px; color: var(--muted); font-size: 11.5px; text-transform: uppercase;
+    letter-spacing: .5px; border-bottom: 1px solid var(--border); background: var(--panel2); white-space: nowrap;
+  }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(217,184,114,.06); }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+  .badge.on { background: rgba(217,184,114,.15); color: var(--accent); }
+  .badge.off { background: rgba(148,163,184,.15); color: var(--muted); }
+  .badge.bot { background: rgba(56,189,248,.15); color: var(--info); }
+  .badge.admin { background: rgba(245,158,11,.15); color: var(--warn); }
+  .badge.report { background: rgba(239,68,68,.15); color: var(--danger); }
+  .badge.pending { background: rgba(245,158,11,.15); color: var(--warn); }
+  .badge.resolved { background: rgba(217,184,114,.15); color: var(--accent); }
+  .truncate { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mono { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--muted); }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .refresh-note { color: var(--muted); font-size: 12px; margin: 10px 2px; }
+  .toolbar { display: flex; gap: 8px; margin: 0 0 12px; }
+  .toolbar input { flex: 1; min-width: 180px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); color: var(--text); outline: none; }
+  .toolbar input:focus { border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginScreen">
+  <div class="login-card">
+    <h1>👑 C$K4 <span style="color:var(--accent)">Admin</span></h1>
+    <div class="sub">Chat v5.4.5 — Control Center</div>
+    <label>Admin email</label>
+    <input id="admEmail" type="email" placeholder="admin@csk4.com" autocomplete="username">
+    <label>Password</label>
+    <input id="admPass" type="password" placeholder="••••••••" autocomplete="current-password">
+    <button class="btn btn-full" id="admLoginBtn" onclick="adminLogin()">Login 👑</button>
+    <div class="err" id="admErr"></div>
+    <div class="hint">
+      Admin credentials server ke <span class="mono">.env</span> se load hote hain.
+      Default passwords production me allowed nahi hain.
+    </div>
+  </div>
+</div>
+
+<!-- ============ PANEL ============ -->
+<div id="adminApp">
+  <header>
+    <div class="logo">👑 C$K4 <span>Admin</span></div>
+    <div class="who" id="whoami">…</div>
+    <button class="btn btn-ghost btn-sm" onclick="fetchData()">⟳ Refresh</button>
+    <button class="btn btn-ghost btn-sm" onclick="openStore()">🗄 Store</button>
+    <button class="btn btn-danger btn-sm" onclick="adminLogout()">Logout</button>
+  </header>
+
+  <nav>
+    <button class="active" data-tab="dashboard" onclick="switchTab('dashboard')">📊 Dashboard</button>
+    <button data-tab="users" onclick="switchTab('users')">👥 Users</button>
+    <button data-tab="messages" onclick="switchTab('messages')">💬 Messages</button>
+    <button data-tab="stories" onclick="switchTab('stories')">🖼️ Stories</button>
+    <button data-tab="groups" onclick="switchTab('groups')">👥 Groups</button>
+    <button data-tab="channels" onclick="switchTab('channels')">📢 Channels</button>
+    <button data-tab="reports" onclick="switchTab('reports')">🚫 Reports</button>
+    <button data-tab="audit" onclick="switchTab('audit')">📜 Audit Log</button>
+    <button data-tab="support" onclick="switchTab('support')">🆘 Support</button>
+    <button data-tab="ads" onclick="switchTab('ads')">🔔 Ads</button>
+    <button data-tab="tools" onclick="switchTab('tools')">🛠️ Tools</button>
+    <button data-tab="settings" onclick="switchTab('settings')">⚙️ Settings</button>
+    <button data-tab="backup" onclick="switchTab('backup')">📦 Backup</button>
+  </nav>
+
+  <main>
+    <!-- DASHBOARD -->
+    <div class="tab-panel active" id="tab-dashboard">
+      <h2>📊 Dashboard <small>— live stats</small></h2>
+      <div class="stats-grid" id="statsGrid"></div>
+      <div class="refresh-note">⟳ Data refresh k liye header me Refresh button dabao</div>
+    </div>
+
+    <!-- USERS -->
+    <div class="tab-panel" id="tab-users">
+      <h2>👥 Users <small>— search, inspect and safely remove accounts</small></h2>
+      <div class="toolbar"><input id="userFilter" placeholder="Search username or email…" oninput="renderUsers()"><button class="btn btn-ghost btn-sm" onclick="clearUserFilter()">Clear</button></div>
+      <div class="tbl-wrap"><table id="usersTbl"></table></div>
+    </div>
+
+    <!-- MESSAGES -->
+    <div class="tab-panel" id="tab-messages">
+      <h2>💬 Messages <small>— recent 100 (decrypted)</small></h2>
+      <div class="toolbar"><input id="messageFilter" placeholder="Search message or type…" oninput="renderMessages()"><button class="btn btn-ghost btn-sm" onclick="clearMessageFilter()">Clear</button></div>
+      <div class="tbl-wrap"><table id="msgsTbl"></table></div>
+    </div>
+
+    <!-- STORIES -->
+    <div class="tab-panel" id="tab-stories">
+      <h2>🖼️ Stories <small>— active + highlights</small></h2>
+      <div class="tbl-wrap"><table id="storiesTbl"></table></div>
+    </div>
+
+    <!-- GROUPS -->
+    <div class="tab-panel" id="tab-groups">
+      <h2>👥 Groups <small>— poora control: create / rename / members / broadcast / delete</small></h2>
+      <div class="toolbar-btns">
+        <button class="btn btn-sm" onclick="openCreateGroupModal()">➕ Create Group</button>
+      </div>
+      <div class="tbl-wrap"><table id="groupsTbl"></table></div>
+    </div>
+
+    <!-- CHANNELS (v5.3.1) -->
+    <div class="tab-panel" id="tab-channels">
+      <h2>📢 Channels <small>— poora control: create / rename / subscribers / broadcast / notify-all / delete</small></h2>
+      <div class="toolbar-btns">
+        <button class="btn btn-sm" onclick="openCreateChannelModal()">➕ Create Channel</button>
+      </div>
+      <div class="tbl-wrap"><table id="channelsTbl"></table></div>
+    </div>
+
+    <!-- REPORTS -->
+    <div class="tab-panel" id="tab-reports">
+      <h2>🚫 Reports <small>— user reports resolve karo</small></h2>
+      <div class="tbl-wrap"><table id="reportsTbl"></table></div>
+    </div>
+
+    <!-- AUDIT -->
+    <div class="tab-panel" id="tab-audit">
+      <h2>📜 Audit Log <small>— admin actions + user events</small></h2>
+      <div class="tbl-wrap"><table id="auditTbl"></table></div>
+    </div>
+
+    <!-- SUPPORT (v5.4.0) -->
+    <div class="tab-panel" id="tab-support">
+      <h2>🆘 Support <small>— user help-line messages + replies</small></h2>
+      <div class="refresh-note">📩 Naya ticket aaye to yahan live dikhna chahiye — Refresh dabao</div>
+      <div class="tbl-wrap"><table id="supportTbl"></table></div>
+    </div>
+
+    <!-- ADS (v5.4.0) -->
+    <div class="tab-panel" id="tab-ads">
+      <h2>🔔 Ads <small>— promo banner + sab users ko notification</small></h2>
+      <div class="toolbar-btns">
+        <button class="btn btn-sm" onclick="openCreateAdModal()">➕ Create Ad</button>
+      </div>
+      <div class="tbl-wrap"><table id="adsTbl"></table></div>
+    </div>
+
+    <!-- TOOLS (v5.4.0) -->
+    <div class="tab-panel" id="tab-tools">
+      <h2>🛠️ Tools <small>— user-side Tools modal ke links manage karo</small></h2>
+      <div class="toolbar-btns">
+        <button class="btn btn-sm" onclick="openCreateToolModal()">➕ Add Tool</button>
+      </div>
+      <div class="tbl-wrap"><table id="toolsTbl"></table></div>
+    </div>
+
+    <!-- SETTINGS (v5.4.0) -->
+    <div class="tab-panel" id="tab-settings">
+      <h2>⚙️ Settings <small>— social links + help line (user Help & Support modal me dikhte hain)</small></h2>
+      <div id="settingsForm"></div>
+    </div>
+
+    <!-- BACKUP -->
+    <div class="tab-panel" id="tab-backup">
+      <h2>📦 Backup</h2>
+      <div class="stat-card">
+        <div class="s-ico">🗄️</div>
+        <div style="margin:10px 0 14px; font-size:14px; color:var(--muted); line-height:1.7">
+          Full database backup (JSON) download karo — users, messages, groups, stories, polls, channels.<br>
+          Server har <b style="color:var(--accent)">6 ghante</b> me auto-backup bhi leta hai (last 10 rakhta hai) — <span class="mono">server/backups/</span>
+        </div>
+        <button class="btn" onclick="downloadBackup()">⬇️ Download Backup (JSON)</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ v5.3.1 MODALS ============ -->
+  <!-- Create Group -->
+  <div class="overlay" id="grpCreateOverlay" onclick="if(event.target===this)closeAllModals()">
+    <div class="modal">
+      <button class="close-x" onclick="closeAllModals()">✕</button>
+      <h3>➕ Create Group</h3>
+      <label>Group name</label>
+      <input id="newGroupName" placeholder="e.g. C$K4 Family" maxlength="60">
+      <label>Description (optional)</label>
+      <textarea id="newGroupDesc" placeholder="Group ke baare me likho…" maxlength="300"></textarea>
+      <div class="actions-row">
+        <button class="btn" onclick="createGroup()">Create Group</button>
+        <button class="btn btn-ghost" onclick="closeAllModals()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Group -->
+  <div class="overlay" id="grpEditOverlay" onclick="if(event.target===this)closeAllModals()">
+    <div class="modal">
+      <button class="close-x" onclick="closeAllModals()">✕</button>
+      <h3>✏️ Edit Group</h3>
+      <input type="hidden" id="editGroupId">
+      <label>Group name</label>
+      <input id="editGroupName" maxlength="60">
+      <label>Description</label>
+      <textarea id="editGroupDesc" maxlength="300"></textarea>
+      <div class="actions-row">
+        <button class="btn" onclick="saveGroupEdit()">Save Changes</button>
+        <button class="btn btn-ghost" onclick="closeAllModals()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Group Members manager -->
+  <div class="overlay" id="grpMembersOverlay" onclick="if(event.target===this)closeAllModals()">
+    <div class="modal" style="max-width:600px;">
+      <button class="close-x" onclick="closeAllModals()">✕</button>
+      <h3>👥 Members — <span id="membersGrpName" style="color:var(--accent)"></span></h3>
+      <!-- v5.4.0: group post_mode toggle (all / admin-only) -->
+      <div id="grpPostModeRow" style="display:none"></div>
+      <div id="membersList" style="max-height:300px;overflow-y:auto;margin-top:6px;"></div>
+      <label style="margin-top:16px;">➕ Add member (username likho)</label>
+      <div style="display:flex;gap:8px;">
+        <input id="addMemberInput" placeholder="username…" onkeydown="if(event.key==='Enter')addGroupMember()">
+        <button class="btn btn-sm" style="padding:10px 16px;" onclick="addGroupMember()">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Group Broadcast -->
+  <div class="overlay" id="grpMsgOverlay" onclick="if(event.target===this)closeAllModals()">
+    <div class="modal">
+      <button class="close-x" onclick="closeAllModals()">✕</button>
+      <h3>📢 Broadcast to Group — <span id="grpMsgName" style="color:var(--accent)"></span></h3>
+      <input type="hidden" id="grpMsgId">
+      <label>Message (sab members ko jayega)</label>
+      <textarea id="grpMsgText" placeholder="Announcement likho…" maxlength="500"></textarea>
+      <label>🔴 Media attach (optional) — pic / video / file</label>
+      <input type="file" id="grpMsgFile" accept="image/*,video/*,audio/*,.pdf,.zip,.rar,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json" style="color:var(--muted);font-size:13px">
+      <div id="grpMsgFileNote" style="font-size:11.5px;color:var(--muted);margin-top:2px"></div>
+      <div class="actions-row">
+        <button class="btn" onclick="sendGroupBroadcast()">📢 Send Broadcast</button>
+        <button class="btn btn-ghost" onclick="closeAllModals()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Channel -->
+  <div class="overlay" id="chCreateOverlay" onclick="if(event.target===this)closeAllModals()">
+    <div class="modal">
+      <button class="close-x" onclick="closeAllModals()">✕</button>
+      <h3>➕ Create Channel</h3>
+      <label>Channel name</label>
+      <input id="newChannelName" placeholder="e.g. C$K4 Updates" maxlength="60">
+      <label>Description (optional)</label>
+      <textarea id="newChannelDesc" placeholder="Channel ke baare me likho…" maxlength="300"></textarea>
+      <div class="actions-row">
+        <button class="btn" onclick="createChannel()">Create Channel</button>
+        <button class="btn btn-ghost" onclick="closeAllModals()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Channel -->
+  <div class="overlay" id="chEditOverlay" onclick="if(event.target===this)closeAllModals()">
+    <div class="modal">
+      <button class="close-x" onclick="closeAllModals()">✕</button>
+      <h3>✏️ Edit Channel</h3>
+      <input type="hidden" id="editChannelId">
+      <label>Channel name</label>
+      <input id="editChannelName" maxlength="60">
+      <label>Description</label>
+      <textarea id="editChannelDesc" maxlength="300"></textarea>
+      <div class="actions-row">
+        <button class="btn" onclick="saveChannelEdit()">Save Changes</button>
+        <button class="btn btn-ghost" onclick="closeAllModals()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Channel Subscribers manager -->
+  <div class="overlay" id="chSubsOverlay" onclick="if(event.target===this)closeAllModals()">
+    <div class="modal" style="max-width:600px;">
+      <button class="close-x" onclick="closeAllModals()">✕</button>
+      <h3>📣 Subscribers — <span id="subsChName" style="color:var(--accent)"></span></h3>
+      <div id="subsList" style="max-height:300px;overflow-y:auto;margin-top:6px;"></div>
+      <label style="margin-top:16px;">➕ Force subscribe (username)</label>
+      <div style="display:flex;gap:8px;">
+        <input id="addSubInput" placeholder="username…" onkeydown="if(event.key==='Enter')addChannelSub()">
+        <button class="btn btn-sm" style="padding:10px 16px;" onclick="addChannelSub()">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Channel Broadcast / Post -->
+  <div class="overlay" id="chMsgOverlay" onclick="if(event.target===this)closeAllModals()">
+    <div class="modal">
+      <button class="close-x" onclick="closeAllModals()">✕</button>
+      <h3>📢 Post to Channel — <span id="chMsgName" style="color:var(--accent)"></span></h3>
+      <input type="hidden" id="chMsgId">
+      <label>Post (sab subscribers ko jayega)</label>
+      <textarea id="chMsgText" placeholder="Channel post likho…" maxlength="500"></textarea>
+      <label>🔴 Media attach (optional) — pic / video / file</label>
+      <input type="file" id="chMsgFile" accept="image/*,video/*,audio/*,.pdf,.zip,.rar,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json" style="color:var(--muted);font-size:13px">
+      <div id="chMsgFileNote" style="font-size:11.5px;color:var(--muted);margin-top:2px"></div>
+      <div class="actions-row">
+        <button class="btn" onclick="sendChannelPost()">📢 Publish Post</button>
+        <button class="btn btn-ghost" onclick="closeAllModals()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Channel Notify ALL users -->
+  <div class="overlay" id="chNotifyOverlay" onclick="if(event.target===this)closeAllModals()">
+    <div class="modal">
+      <button class="close-x" onclick="closeAllModals()">✕</button>
+      <h3>🔔 Notify ALL Users — <span id="chNotifyName" style="color:var(--accent)"></span></h3>
+      <input type="hidden" id="chNotifyId">
+      <label>Notification title</label>
+      <input id="chNotifyTitle" maxlength="80" placeholder="e.g. 📢 C$K4 Update">
+      <label>Notification body</label>
+      <textarea id="chNotifyBody" placeholder="Sab users ko jayega — important announcement likho…" maxlength="300"></textarea>
+      <div class="actions-row">
+        <button class="btn" onclick="sendChannelNotifyAll()">🔔 Send to All</button>
+        <button class="btn btn-ghost" onclick="closeAllModals()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Simple confirm modal (delete etc.) -->
+  <!-- v5.4.0: Story Viewer -->
+<div class="overlay" id="storyViewOverlay" onclick="if(event.target===this)closeAllModals()">
+  <div class="modal" style="max-width:420px">
+    <button class="close-x" onclick="closeAllModals()">✕</button>
+    <h3 id="svTitle">📸 Story</h3>
+    <div id="svBody" style="margin-top:8px"></div>
+    <div id="svMeta" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
+  </div>
+</div>
+
+<!-- v5.4.0: Media Viewer (messages) -->
+<div class="overlay" id="mediaViewOverlay" onclick="if(event.target===this)closeAllModals()">
+  <div class="modal" style="max-width:520px">
+    <button class="close-x" onclick="closeAllModals()">✕</button>
+    <h3 id="mvTitle">📁 Media</h3>
+    <div id="mvBody" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<!-- v16.4.4: Channel/Group Posts Viewer -->
+<div class="overlay" id="postsViewOverlay" onclick="if(event.target===this)closeAllModals()">
+  <div class="modal" style="max-width:640px;max-height:86vh;display:flex;flex-direction:column">
+    <button class="close-x" onclick="closeAllModals()">✕</button>
+    <h3 id="pvTitle">📢 Posts</h3>
+    <div id="pvBody" style="margin-top:8px;overflow-y:auto;flex:1"></div>
+  </div>
+</div>
+
+<!-- v16.4.4: Store / Uploads Viewer (admin sab files dekhe) -->
+<div class="overlay" id="storeViewOverlay" onclick="if(event.target===this)closeAllModals()">
+  <div class="modal" style="max-width:680px;max-height:86vh;display:flex;flex-direction:column">
+    <button class="close-x" onclick="closeAllModals()">✕</button>
+    <h3>🗄 Store / Uploads</h3>
+    <div style="margin:6px 0 10px;display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-sm" id="stBtnAll" onclick="loadStoreTab('all')">Sab</button>
+      <button class="btn btn-sm btn-ghost" id="stBtnImages" onclick="loadStoreTab('images')">🖼 Pics</button>
+      <button class="btn btn-sm btn-ghost" id="stBtnVideos" onclick="loadStoreTab('videos')">🎬 Videos</button>
+      <button class="btn btn-sm btn-ghost" id="stBtnFiles" onclick="loadStoreTab('files')">📎 Files</button>
+    </div>
+    <div id="stBody" style="overflow-y:auto;flex:1"></div>
+  </div>
+</div>
+
+<!-- v5.4.0: Create Ad modal -->
+<div class="overlay" id="adCreateOverlay" onclick="if(event.target===this)closeAllModals()">
+  <div class="modal" style="max-width:480px">
+    <button class="close-x" onclick="closeAllModals()">✕</button>
+    <h3>🔔 Create Ad</h3>
+    <label>Title *</label>
+    <input id="adTitle" maxlength="80" placeholder="Ad title (jaise: NEW FEATURE LIVE)">
+    <label>Body</label>
+    <textarea id="adBody" rows="2" maxlength="200" placeholder="Ad message…"></textarea>
+    <label>Link URL</label>
+    <input id="adLink" placeholder="https://…">
+    <label>Link Label</label>
+    <input id="adLabel" maxlength="30" placeholder="Open">
+    <label class="chk-row"><input type="checkbox" id="adNotify" checked> 🔔 Sab users ko notification bhejo</label>
+    <button class="btn" onclick="createAd()">🚀 Launch Ad</button>
+  </div>
+</div>
+
+<!-- v5.4.0: Add Tool modal -->
+<div class="overlay" id="toolCreateOverlay" onclick="if(event.target===this)closeAllModals()">
+  <div class="modal" style="max-width:480px">
+    <button class="close-x" onclick="closeAllModals()">✕</button>
+    <h3>🛠️ Add Tool</h3>
+    <label>Name *</label>
+    <input id="tlName" maxlength="60" placeholder="Tool name">
+    <label>URL *</label>
+    <input id="tlUrl" placeholder="https://…">
+    <label>Description</label>
+    <input id="tlDesc" maxlength="120" placeholder="Short description">
+    <label>Icon (emoji)</label>
+    <input id="tlIcon" maxlength="4" placeholder="🛠️">
+    <button class="btn" onclick="createTool()">➕ Add Tool</button>
+  </div>
+</div>
+
+<!-- v5.4.0: Support ticket reply modal -->
+<div class="overlay" id="supportReplyOverlay" onclick="if(event.target===this)closeAllModals()">
+  <div class="modal" style="max-width:480px">
+    <button class="close-x" onclick="closeAllModals()">✕</button>
+    <h3 id="spReplyTitle">📝 Reply to User</h3>
+    <div id="spReplyCtx" style="font-size:13px;color:var(--muted);margin:6px 0 10px"></div>
+    <label>Reply *</label>
+    <textarea id="spReplyText" rows="4" maxlength="2000" placeholder="User ko reply likho…"></textarea>
+    <button class="btn" onclick="sendSupportReply()">📨 Send Reply</button>
+  </div>
+</div>
+
+<div class="overlay" id="confirmOverlay" onclick="if(event.target===this)closeAllModals()">
+    <div class="modal" style="max-width:400px;">
+      <h3 id="confirmTitle">Confirm</h3>
+      <p style="color:var(--muted);font-size:14px;line-height:1.6" id="confirmText"></p>
+      <div class="actions-row">
+        <button class="btn btn-danger" id="confirmYes" onclick="confirmYes()">Yes, do it</button>
+        <button class="btn btn-ghost" onclick="closeAllModals()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+let adminToken = localStorage.getItem('csk4_admin_token') || '';
+let adminMe = null;
+const $ = id => document.getElementById(id);
+
+async function admApi(path, method = 'GET', body) {
+  const res = await fetch(path, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  let data = null;
+  try { data = await res.json(); } catch {}
+  if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+  return data;
+}
+/* v5.4.0: media upload (FormData — JSON nahi) */
+async function admUpload(path, formData) {
+  const res = await fetch(path, { method: 'POST', headers: { 'Authorization': 'Bearer ' + adminToken }, body: formData });
+  let data = null;
+  try { data = await res.json(); } catch {}
+  if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+  return data;
+}
+
+/* ---------- LOGIN ---------- */
+async function adminLogin() {
+  const email = $('admEmail').value.trim().toLowerCase();
+  const pass = $('admPass').value;
+  $('admErr').textContent = '';
+  if (!email || !pass) { $('admErr').textContent = 'Email + password likho!'; return; }
+  $('admLoginBtn').disabled = true; $('admLoginBtn').textContent = '⏳ Checking…';
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+    if (!data.user || !data.user.isAdmin) throw new Error('Ye admin account nahi hai! 👎');
+    adminToken = data.token;
+    adminMe = data.user;
+    localStorage.setItem('csk4_admin_token', adminToken);
+    enterAdmin();
+  } catch (e) {
+    $('admErr').textContent = '⚠️ ' + e.message;
+  } finally {
+    $('admLoginBtn').disabled = false; $('admLoginBtn').textContent = 'Login 👑';
+  }
+}
+$('admPass').addEventListener('keydown', e => { if (e.key === 'Enter') adminLogin(); });
+/* v5.4.0: file select par naam+size note */
+$('grpMsgFile').addEventListener('change', () => {
+  const f = $('grpMsgFile').files[0];
+  $('grpMsgFileNote').textContent = f ? `✅ ${f.name} (${(f.size/1048576).toFixed(2)} MB)` : '';
+});
+$('chMsgFile').addEventListener('change', () => {
+  const f = $('chMsgFile').files[0];
+  $('chMsgFileNote').textContent = f ? `✅ ${f.name} (${(f.size/1048576).toFixed(2)} MB)` : '';
+});
+
+function adminLogout() {
+  askConfirm('Logout', 'Admin panel se logout?', () => {
+    adminToken = ''; adminMe = null;
+    localStorage.removeItem('csk4_admin_token');
+    location.reload();
+  });
+}
+
+function enterAdmin() {
+  $('loginScreen').style.display = 'none';
+  $('adminApp').style.display = 'block';
+  $('whoami').textContent = '👑 ' + (adminMe?.username || 'admin');
+  fetchData();
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
+}
+
+/* ---------- DATA ---------- */
+let adminData = { stats: null, users: [], messages: [], stories: [], groups: [], channels: [], reports: [], audit: [] };
+let confirmCallback = null;
+
+async function fetchData() {
+  try {
+    const [stats, users, msgs, stories, groups, channels, reports, audit, support, ads, tools, settings] = await Promise.all([
+      admApi('/api/admin/stats'),
+      admApi('/api/admin/users'),
+      admApi('/api/admin/messages'),
+      admApi('/api/admin/stories'),
+      admApi('/api/admin/groups'),
+      admApi('/api/admin/channels'),
+      admApi('/api/admin/reports'),
+      admApi('/api/admin/audit'),
+      admApi('/api/admin/support').catch(() => ({ tickets: [] })),
+      admApi('/api/admin/ads/list').catch(() => ({ ads: [] })),
+      admApi('/api/admin/tools/list').catch(() => ({ tools: [] })),
+      admApi('/api/settings').catch(() => ({ settings: {} }))
+    ]);
+    adminData = {
+      stats: stats.stats || stats, users: users.users || [], messages: msgs.messages || [],
+      stories: stories.stories || [], groups: groups.groups || [], channels: channels.channels || [],
+      reports: reports.reports || [], audit: audit.audit || audit.log || [],
+      tickets: support.tickets || [], ads: ads.ads || [], tools: tools.tools || [],
+      settings: settings.settings || {}
+    };
+    renderAll();
+    renderSettingsForm();
+  } catch (e) {
+    if (String(e.message).includes('401') || String(e.message).includes('token')) {
+      adminToken = ''; localStorage.removeItem('csk4_admin_token');
+      location.reload();
+    } else alert('Fetch error: ' + e.message);
+  }
+}
+
+function renderAll() {
+  renderStats(); renderUsers(); renderMessages(); renderStories(); renderGroups(); renderChannels(); renderReports(); renderAudit();
+  renderSupport(); renderAds(); renderTools();   /* v5.4.0 */
+}
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function fmtTime(ts) { return ts ? new Date(ts).toLocaleString() : '—'; }
+
+function renderStats() {
+  const s = adminData.stats || {};
+  const cards = [
+    ['👥', s.users ?? '—', 'Total users', 'green'],
+    ['💬', s.messages ?? '—', 'Direct messages', 'blue'],
+    ['👥', s.groups ?? '—', 'Groups', 'yellow'],
+    ['📢', s.channels ?? '—', 'Channels', 'green'],
+    ['🖼️', s.stories ?? '—', 'Stories', 'blue'],
+    ['📊', s.polls ?? '—', 'Polls', 'yellow'],
+    ['🚫', s.reports ?? '—', 'Reports', 'red'],
+    ['🟢', s.online_now ?? '—', 'Online now', 'green'],
+  ];
+  $('statsGrid').innerHTML = cards.map(c =>
+    `<div class="stat-card ${c[3]}"><div class="s-ico">${c[0]}</div><div class="s-num">${esc(c[1])}</div><div class="s-label">${esc(c[2])}</div></div>`).join('');
+}
+
+function renderUsers() {
+  const q = ($('userFilter')?.value || '').trim().toLowerCase();
+  const rows = adminData.users.filter(u => !q || `${u.username} ${u.email}`.toLowerCase().includes(q));
+  if (!rows.length) { $('usersTbl').innerHTML = '<tr><td class="empty">Koi user nahi</td></tr>'; return; }
+  $('usersTbl').innerHTML = `
+    <tr><th>User</th><th>Email</th><th>Role</th><th>2FA</th><th>Last seen</th><th>Joined</th><th>Actions</th></tr>
+    ${rows.map(u => `
+    <tr>
+      <td><b>${esc(u.username)}</b></td>
+      <td class="truncate mono">${esc(u.email)}</td>
+      <td>${u.is_admin ? '<span class="badge admin">👑 ADMIN</span>' : (u.email === 'bot@csk4.com' ? '<span class="badge bot">🤖 BOT</span>' : '<span class="badge off">user</span>')}</td>
+      <td>${u.two_fa_enabled ? '<span class="badge on">ON</span>' : '<span class="badge off">off</span>'}</td>
+      <td class="mono">${fmtTime(u.last_seen)}</td>
+      <td class="mono">${fmtTime(u.created_at)}</td>
+      <td class="actions">${(!u.is_admin && u.email !== 'bot@csk4.com') ? `<button class="btn btn-danger btn-sm" onclick="delUser('${u.id}','${esc(u.username)}')">🗑 Delete</button>` : '—'}</td>
+    </tr>`).join('')}`;
+}
+
+function renderMessages() {
+  const q = ($('messageFilter')?.value || '').trim().toLowerCase();
+  const rows = adminData.messages.filter(m => !q || `${m.message || ''} ${m.type || ''} ${m.from_username || m.from_name || ''} ${m.to_username || m.to_name || ''}`.toLowerCase().includes(q));
+  if (!rows.length) { $('msgsTbl').innerHTML = '<tr><td class="empty">Koi message nahi</td></tr>'; return; }
+  $('msgsTbl').innerHTML = `
+    <tr><th>From</th><th>To</th><th>Message</th><th>Type</th><th>Time</th><th>Actions</th></tr>
+    ${rows.map(m => `
+    <tr>
+      <td><b>${esc(m.from_username || m.from_name || m.from_user || '?')}</b></td>
+      <td>${esc(m.to_username || m.to_name || m.to_user || '?')}</td>
+      <td class="truncate">${m.deleted_for_everyone ? '<i style="color:var(--muted)">🚫 deleted message</i>' : esc((m.message || (m.media_url ? '[' + (m.type || 'media') + '] ' + (m.media_name || '') : '')).slice(0, 90))}${m.media_url && !m.deleted_for_everyone ? ` <button class="btn btn-sm" style="padding:2px 8px;font-size:11px" onclick="viewMedia('${esc(m.media_url)}','${esc(m.type || 'file')}','${esc(m.media_name || '')}')">👁</button>` : ''}</td>
+      <td><span class="badge ${m.type && m.type !== 'text' ? 'on' : 'off'}">${esc(m.type || 'text')}</span></td>
+      <td class="mono">${fmtTime(m.timestamp)}</td>
+      <td class="actions"><button class="btn btn-danger btn-sm" onclick="delMsg('${m.id}')">🗑</button></td>
+    </tr>`).join('')}`;
+}
+
+function renderStories() {
+  const rows = adminData.stories;
+  if (!rows.length) { $('storiesTbl').innerHTML = '<tr><td class="empty">Koi story nahi</td></tr>'; return; }
+  $('storiesTbl').innerHTML = `
+    <tr><th>Owner</th><th>Type</th><th>Content</th><th>Views</th><th>Expires</th><th>Actions</th></tr>
+    ${rows.map(s => `
+    <tr>
+      <td><b>${esc(s.username || s.user_id || '?')}</b></td>
+      <td>${esc(s.type || 'text')}</td>
+      <td class="truncate">${esc((s.content || s.caption || '(media)').slice(0, 80))}</td>
+      <td>👁 ${s.views || 0}</td>
+      <td class="mono">${s.is_highlight ? '⭐ Highlight (forever)' : fmtTime(s.expires_at)}</td>
+      <td class="actions"><button class="btn btn-sm" onclick="viewStory('${s.id}')">👁 View</button> <button class="btn btn-danger btn-sm" onclick="delStory('${s.id}')">🗑</button></td>
+    </tr>`).join('')}`;
+}
+
+function renderGroups() {
+  const rows = adminData.groups;
+  if (!rows.length) { $('groupsTbl').innerHTML = '<tr><th>Group</th><th>Members</th><th>Owner</th><th>Created</th><th>Actions</th></tr><tr><td class="empty" colspan="5">Koi group nahi — ➕ Create Group button se banao</td></tr>'; return; }
+  $('groupsTbl').innerHTML = `
+    <tr><th>Group</th><th>Members</th><th>Owner</th><th>Created</th><th>Actions</th></tr>
+    ${rows.map(g => `
+    <tr>
+      <td><b>${esc(g.name)}</b><br><span class="mono">${esc(g.description || '')}</span></td>
+      <td>👥 ${g.member_count ?? '—'}</td>
+      <td>${esc(g.owner_name || g.created_by || '?')}</td>
+      <td class="mono">${fmtTime(g.created_at)}</td>
+      <td class="actions"><div class="row-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openEditGroup('${g.id}')">✏️ Rename/Edit</button>
+        <button class="btn btn-ghost btn-sm" onclick="openGroupMembers('${g.id}')">👥 Members</button>
+        <button class="btn btn-ghost btn-sm" onclick="viewGroupMessages('${g.id}','${esc(g.name)}')">📂 Messages</button>
+        <button class="btn btn-ghost btn-sm" onclick="openGroupBroadcast('${g.id}','${esc(g.name)}')">📢 Broadcast</button>
+        <button class="btn btn-danger btn-sm" onclick="delGroup('${g.id}','${esc(g.name)}')">🗑 Delete</button>
+      </div></td>
+    </tr>`).join('')}`;
+}
+
+/* ---------- v5.3.1 CHANNELS (poora control) ---------- */
+function renderChannels() {
+  const rows = adminData.channels || [];
+  if (!rows.length) { $('channelsTbl').innerHTML = '<tr><th>Channel</th><th>Subs</th><th>Posts</th><th>Owner</th><th>Created</th><th>Actions</th></tr><tr><td class="empty" colspan="6">Koi channel nahi — ➕ Create Channel button se banao</td></tr>'; return; }
+  $('channelsTbl').innerHTML = `
+    <tr><th>Channel</th><th>Subs</th><th>Posts</th><th>Owner</th><th>Created</th><th>Actions</th></tr>
+    ${rows.map(c => `
+    <tr>
+      <td><b>📢 ${esc(c.name)}</b><br><span class="mono">${esc(c.description || '')}</span></td>
+      <td>👥 ${c.sub_count ?? c.subscribers ?? '—'}</td>
+      <td>💬 ${c.message_count ?? '—'}</td>
+      <td>${esc(c.owner_name || c.owner_id || '?')}</td>
+      <td class="mono">${fmtTime(c.created_at)}</td>
+      <td class="actions"><div class="row-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openEditChannel('${c.id}')">✏️ Rename/Edit</button>
+        <button class="btn btn-ghost btn-sm" onclick="changeChannelDp('${c.id}','${esc(c.name)}')">💼 Change DP</button>
+        <button class="btn btn-ghost btn-sm" onclick="openChannelSubs('${c.id}')">📣 Subscribers</button>
+        <button class="btn btn-ghost btn-sm" onclick="openChannelPost('${c.id}','${esc(c.name)}')">📢 Post</button>
+        <button class="btn btn-ghost btn-sm" onclick="viewChannelPosts('${c.id}','${esc(c.name)}')">📂 Posts</button>
+        <button class="btn btn-ghost btn-sm" onclick="openChannelNotify('${c.id}','${esc(c.name)}')">🔔 Notify All</button>
+        <button class="btn btn-danger btn-sm" onclick="delChannel('${c.id}','${esc(c.name)}')">🗑 Delete</button>
+      </div></td>
+    </tr>`).join('')}`;
+}
+
+function renderReports() {
+  const rows = adminData.reports;
+  if (!rows.length) { $('reportsTbl').innerHTML = '<tr><td class="empty">Koi report nahi — sab clean ✨</td></tr>'; return; }
+  $('reportsTbl').innerHTML = `
+    <tr><th>Reporter</th><th>Reported user</th><th>Reason</th><th>Status</th><th>Time</th><th>Actions</th></tr>
+    ${rows.map(r => `
+    <tr>
+      <td><b>${esc(r.reporter_username || r.reporter_id || '?')}</b></td>
+      <td>${esc(r.reported_username || r.reported_name || r.reported_user || '?')}</td>
+      <td class="truncate">${esc(r.reason || '')}</td>
+      <td>${r.resolved ? '<span class="badge resolved">resolved</span>' : '<span class="badge pending">pending</span>'}</td>
+      <td class="mono">${fmtTime(r.created_at)}</td>
+      <td class="actions">${!r.resolved ? `<button class="btn btn-sm" onclick="resolveReport('${r.id}')">✔ Resolve</button>` : '—'}</td>
+    </tr>`).join('')}`;
+}
+
+function renderAudit() {
+  const rows = adminData.audit;
+  if (!rows.length) { $('auditTbl').innerHTML = '<tr><td class="empty">Audit log khali</td></tr>'; return; }
+  $('auditTbl').innerHTML = `
+    <tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr>
+    ${rows.map(a => `
+    <tr>
+      <td class="mono">${fmtTime(a.created_at || a.timestamp)}</td>
+      <td>${esc(a.username || a.user_id || '?')}</td>
+      <td><span class="badge off">${esc(a.action || '')}</span></td>
+      <td class="truncate">${esc(a.detail || '')}</td>
+    </tr>`).join('')}`;
+}
+
+function clearUserFilter() { if ($('userFilter')) $('userFilter').value = ''; renderUsers(); }
+function clearMessageFilter() { if ($('messageFilter')) $('messageFilter').value = ''; renderMessages(); }
+
+/* ---------- ACTIONS ---------- */
+async function delUser(id, name) {
+  askConfirm('🗑 Delete User', `User "${name}" delete karein? Ye permanent hai!`, async () => {
+    try { await admApi('/api/admin/users/' + id, 'DELETE'); toast('🗑 User deleted'); fetchData(); }
+    catch (e) { alert(e.message); }
+  });
+}
+async function delMsg(id) {
+  askConfirm('🗑 Delete Message', 'Message delete karein?', async () => {
+    try { await admApi('/api/admin/messages/' + id, 'DELETE'); fetchData(); }
+    catch (e) { alert(e.message); }
+  });
+}
+/* ---------- v16.4.4: CHANNEL DP + POSTS VIEWER + GROUP MSGS VIEWER + STORE ---------- */
+async function changeChannelDp(chId, chName) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*';
+  input.onchange = async () => {
+    const f = input.files && input.files[0];
+    if (!f) return;
+    const fd = new FormData();
+    fd.append('avatar', f);
+    try {
+      const data = await admUpload('/api/admin/channels/' + chId + '/avatar', fd);
+      toast(data.message || 'Channel DP updated 💼');
+      fetchData();
+    } catch (e) { alert(e.message); }
+  };
+  input.click();
+}
+
+async function viewChannelPosts(chId, chName) {
+  try {
+    const data = await admApi('/api/admin/channels/' + chId + '/posts');
+    $('pvTitle').textContent = '📢 ' + chName + ' — Posts (' + (data.posts || []).length + ')';
+    let html = '';
+    if (!(data.posts || []).length) html = '<div class="empty" style="padding:24px">Koi post nahi</div>';
+    else html = (data.posts || []).map(p => {
+      let media = '';
+      if (p.type === 'image' && p.media_url) media = `<img src="${esc(p.media_url)}" style="max-width:220px;border-radius:8px;display:block;margin:4px 0">`;
+      else if (p.type === 'video' && p.media_url) media = `<video src="${esc(p.media_url)}" controls style="max-width:260px;border-radius:8px;display:block;margin:4px 0"></video>`;
+      else if (p.media_url) media = `<div style="font-size:12px;color:var(--muted)">📎 ${esc(p.media_name || 'file')}</div>`;
+      return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <b>${esc(p.sender_name || 'Admin')}</b>
+          <button class="btn btn-danger btn-sm" onclick="delChannelPost('${p.id}','${chId}','${esc(chName)}')">🗑 Delete</button>
+        </div>
+        <div style="margin:4px 0;font-size:14px">${esc(p.message || '')}</div>
+        ${media}
+        <div style="font-size:11px;color:var(--muted)">${fmtTime(p.timestamp)} · ${esc(p.type || 'text')}</div>
+      </div>`;
+    }).join('');
+    $('pvBody').innerHTML = html;
+    showModal('postsViewOverlay');
+  } catch (e) { alert(e.message); }
+}
+
+async function delChannelPost(msgId, chId, chName) {
+  askConfirm('🗑 Delete Post', 'Ye channel post delete karein?', async () => {
+    try { await admApi('/api/admin/channel-messages/' + msgId, 'DELETE'); toast('🗑 Post deleted'); viewChannelPosts(chId, chName); }
+    catch (e) { alert(e.message); }
+  });
+}
+
+async function viewGroupMessages(gId, gName) {
+  try {
+    const data = await admApi('/api/admin/groups/' + gId + '/messages');
+    $('pvTitle').textContent = '👥 ' + gName + ' — Messages (' + (data.messages || []).length + ')';
+    let html = '';
+    if (!(data.messages || []).length) html = '<div class="empty" style="padding:24px">Koi message nahi</div>';
+    else html = (data.messages || []).map(p => {
+      let media = '';
+      if (p.type === 'image' && p.media_url) media = `<img src="${esc(p.media_url)}" style="max-width:220px;border-radius:8px;display:block;margin:4px 0">`;
+      else if (p.type === 'video' && p.media_url) media = `<video src="${esc(p.media_url)}" controls style="max-width:260px;border-radius:8px;display:block;margin:4px 0"></video>`;
+      else if (p.media_url) media = `<div style="font-size:12px;color:var(--muted)">📎 ${esc(p.media_name || 'file')}</div>`;
+      return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <b>${esc(p.sender_name || 'User')}</b>
+          <button class="btn btn-danger btn-sm" onclick="delGroupMsg('${p.id}','${gId}','${esc(gName)}')">🗑 Delete</button>
+        </div>
+        <div style="margin:4px 0;font-size:14px">${esc(p.message || '')}</div>
+        ${media}
+        <div style="font-size:11px;color:var(--muted)">${fmtTime(p.timestamp)} · ${esc(p.type || 'text')}</div>
+      </div>`;
+    }).join('');
+    $('pvBody').innerHTML = html;
+    showModal('postsViewOverlay');
+  } catch (e) { alert(e.message); }
+}
+
+async function delGroupMsg(msgId, gId, gName) {
+  askConfirm('🗑 Delete Message', 'Ye group message delete karein?', async () => {
+    try { await admApi('/api/admin/group-messages/' + msgId, 'DELETE'); toast('🗑 Message deleted'); viewGroupMessages(gId, gName); }
+    catch (e) { alert(e.message); }
+  });
+}
+
+/* ---------- v16.4.4: STORE / UPLOADS BROWSER (admin sab files dekhe) ---------- */
+let storeTab = 'all';
+async function openStore() {
+  showModal('storeViewOverlay');
+  await loadStoreTab(storeTab);
+}
+async function loadStoreTab(tab) {
+  storeTab = tab;
+  ['stBtnAll','stBtnImages','stBtnVideos','stBtnFiles'].forEach(id => { if ($(id)) $(id).className = 'btn btn-sm btn-ghost'; });
+  const activeBtn = { all: 'stBtnAll', images: 'stBtnImages', videos: 'stBtnVideos', files: 'stBtnFiles' }[tab];
+  if ($(activeBtn)) $(activeBtn).className = 'btn btn-sm';
+  try {
+    const data = await admApi('/api/admin/store?tab=' + tab);
+    const items = data.items || [];
+    let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:8px">${items.length} items · total ${(data.total_bytes/1048576).toFixed(2)} MB</div>`;
+    if (!items.length) html += '<div class="empty" style="padding:24px">Koi file nahi</div>';
+    else html += items.map(it => {
+      let preview = '';
+      if (it.type === 'image') preview = `<img src="${esc(it.url)}" style="width:74px;height:74px;object-fit:cover;border-radius:8px">`;
+      else if (it.type === 'video') preview = `<video src="${esc(it.url)}" style="width:74px;height:74px;object-fit:cover;border-radius:8px" preload="metadata"></video>`;
+      else preview = `<div style="width:74px;height:74px;border-radius:8px;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:26px">📎</div>`;
+      return `<div style="display:flex;gap:10px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:8px;margin-bottom:8px">
+        ${preview}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.name || 'file')}</div>
+          <div style="font-size:11.5px;color:var(--muted)">👤 ${esc(it.owner || '?')} · ${(it.size/1048576).toFixed(2)} MB · ${esc(it.kind || '')} · ${fmtTime(it.uploaded_at)}</div>
+          <a href="${esc(it.url)}" target="_blank" style="font-size:11.5px">🔗 Open</a>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="delStoreItem('${esc(it.url)}')">Delete</button>
+      </div>`;
+    }).join('');
+    $('stBody').innerHTML = html;
+  } catch (e) { $('stBody').innerHTML = '<div class="empty" style="padding:24px">' + esc(e.message) + '</div>'; }
+}
+async function delStoreItem(url) {
+  askConfirm('🗑 Delete File', 'Ye file server se permanently delete karein?', async () => {
+    try { await admApi('/api/admin/store/delete', 'POST', { url }); toast('🗑 File deleted'); loadStoreTab(storeTab); }
+    catch (e) { alert(e.message); }
+  });
+}
+
+/* v5.4.0: STORY VIEWER — admin kisi ki bhi story dekh sakta hai */
+function viewStory(id) {
+  const s = adminData.stories.find(x => x.id === id);
+  if (!s) return toast('Story nahi mili');
+  $('svTitle').textContent = `📸 ${s.username || 'User'} ki story`;
+  let body = '';
+  if (s.type === 'image') body = `<img src="${esc(s.media_url)}" style="max-width:100%;border-radius:10px;display:block;margin:auto" alt="story">`;
+  else if (s.type === 'video') body = `<video src="${esc(s.media_url)}" controls autoplay playsinline style="max-width:100%;border-radius:10px;display:block;margin:auto"></video>`;
+  else body = `<div style="background:#F6F1E4;border:1px solid var(--border);border-radius:10px;padding:24px;text-align:center;font-size:17px;color:var(--text)">${esc(s.content || '(empty)')}</div>`;
+  if (s.caption) body += `<div style="margin-top:8px;color:var(--text-secondary);font-size:13px">💬 ${esc(s.caption)}</div>`;
+  $('svBody').innerHTML = body;
+  $('svMeta').textContent = `👁 ${s.views || 0} views · ${s.is_highlight ? '⭐ Highlight (forever)' : 'Expires: ' + fmtTime(s.expires_at)} · Posted: ${fmtTime(s.created_at)}`;
+  showModal('storyViewOverlay');
+}
+
+/* v5.4.0: MEDIA VIEWER — message attachments */
+function viewMedia(url, type, name) {
+  $('mvTitle').textContent = `📁 ${name || (type || 'media')}`;
+  let body = '';
+  if (type === 'image') body = `<img src="${esc(url)}" style="max-width:100%;border-radius:10px;display:block;margin:auto" alt="">`;
+  else if (type === 'video') body = `<video src="${esc(url)}" controls autoplay playsinline style="max-width:100%;border-radius:10px;display:block;margin:auto"></video>`;
+  else if (type === 'audio' || type === 'voice') body = `<audio src="${esc(url)}" controls style="width:100%"></audio>`;
+  else body = `<div style="padding:18px;text-align:center"><div style="font-size:38px">📎</div><div style="color:var(--text-secondary);margin:6px 0">${esc(name || url.split('/').pop())}</div><a class="btn" href="${esc(url)}" download target="_blank">⬇ Download</a></div>`;
+  $('mvBody').innerHTML = body;
+  showModal('mediaViewOverlay');
+}
+
+async function delStory(id) {
+  askConfirm('🗑 Delete Story', 'Story delete karein?', async () => {
+    try { await admApi('/api/admin/stories/' + id, 'DELETE'); fetchData(); }
+    catch (e) { alert(e.message); }
+  });
+}
+async function delGroup(id, name) {
+  askConfirm('🗑 Delete Group', `Group "${name}" delete karein? Sab messages + members bhi delete honge.`, async () => {
+    try { await admApi('/api/admin/groups/' + id, 'DELETE'); toast('✅ Group deleted'); fetchData(); }
+    catch (e) { alert(e.message); }
+  });
+}
+async function resolveReport(id) {
+  try { await admApi('/api/admin/report/resolve', 'POST', { id }); fetchData(); }
+  catch (e) { alert(e.message); }
+}
+
+/* ============================================================
+   v5.3.1 — GROUP & CHANNEL FULL CONTROL (admin)
+   ============================================================ */
+function closeAllModals() {
+  document.querySelectorAll('.overlay').forEach(o => o.classList.remove('active'));
+}
+function showModal(id) { closeAllModals(); $(id).classList.add('active'); }
+
+/* ---------- GROUP: create ---------- */
+function openCreateGroupModal() { $('newGroupName').value = ''; $('newGroupDesc').value = ''; showModal('grpCreateOverlay'); setTimeout(() => $('newGroupName').focus(), 60); }
+async function createGroup() {
+  const name = $('newGroupName').value.trim();
+  if (!name) return alert('Group name likho');
+  try {
+    const r = await admApi('/api/admin/groups', 'POST', { name, description: $('newGroupDesc').value.trim() });
+    toast(r.message || '✅ Group created'); closeAllModals(); fetchData();
+  } catch (e) { alert(e.message); }
+}
+
+/* ---------- GROUP: edit ---------- */
+function openEditGroup(id) {
+  const g = adminData.groups.find(x => x.id === id);
+  if (!g) return;
+  $('editGroupId').value = id;
+  $('editGroupName').value = g.name || '';
+  $('editGroupDesc').value = g.description || '';
+  showModal('grpEditOverlay');
+}
+async function saveGroupEdit() {
+  const id = $('editGroupId').value;
+  const name = $('editGroupName').value.trim();
+  if (!name) return alert('Group name khali nahi ho sakta');
+  try {
+    const r = await admApi('/api/admin/groups/' + id, 'PUT', { name, description: $('editGroupDesc').value.trim() });
+    toast(r.message || '✅ Group updated'); closeAllModals(); fetchData();
+  } catch (e) { alert(e.message); }
+}
+
+/* ---------- GROUP: members ---------- */
+let membersCtxGroupId = null;
+async function openGroupMembers(id) {
+  membersCtxGroupId = id;
+  try {
+    const r = await admApi(`/api/admin/groups/${id}/members`);
+    $('membersGrpName').textContent = r.group?.name || '';
+    /* v5.4.0: group post_mode header — admin-only posting toggle */
+    const g = (adminData.groups || []).find(x => x.id === id);
+    const pm = g ? (g.post_mode || 'all') : 'all';
+    const pmEl = $('grpPostModeRow');
+    if (pmEl) {
+      pmEl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 4px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--panel2)">
+          <span style="font-size:13px;font-weight:700">🗣️ Who can post:</span>
+          <label class="chk-row" style="margin:0"><input type="radio" name="pm" value="all" ${pm !== 'admin' ? 'checked' : ''} onchange="setGroupPostMode('${id}','all')"> 👥 All members</label>
+          <label class="chk-row" style="margin:0"><input type="radio" name="pm" value="admin" ${pm === 'admin' ? 'checked' : ''} onchange="setGroupPostMode('${id}','admin')"> 👑 Sirf Admin</label>
+        </div>`;
+      pmEl.style.display = 'block';
+    }
+    const list = r.members || [];
+    $('membersList').innerHTML = list.length ? list.map(m => {
+      const cp = m.can_post === null || m.can_post === undefined ? 1 : Number(m.can_post);
+      const isRoleAdmin = String(m.role) === 'admin';
+      return `
+      <div class="member-chip">
+        <span class="mc-name">${esc(m.username)}${m.online ? ' <span style="color:#4ade80">●</span>' : ''}</span>
+        <span class="mc-role">${esc(m.role || 'member')}${isRoleAdmin ? ' — post OK' : (cp ? ' — ✅ post allowed' : ' — 🚫 blocked')}</span>
+        ${!isRoleAdmin ? `<button class="btn btn-ghost btn-sm" onclick="toggleCanPost('${m.id}','${esc(m.username)}',${cp ? 0 : 1})">${cp ? '🚫 Block Post' : '✅ Allow Post'}</button>` : ''}
+        <button class="btn btn-danger btn-sm" onclick="removeGroupMember('${m.id}','${esc(m.username)}')">✕ Remove</button>
+      </div>`;}).join('') : '<p style="color:var(--muted)">Koi member nahi</p>';
+    $('addMemberInput').value = '';
+    showModal('grpMembersOverlay');
+  } catch (e) { alert(e.message); }
+}
+/* v5.4.0: group post_mode (all / admin-only) */
+async function setGroupPostMode(id, mode) {
+  try {
+    const g = (adminData.groups || []).find(x => x.id === id);
+    const r = await admApi(`/api/admin/groups/${id}`, 'PUT', { name: g?.name || '', post_mode: mode });
+    toast(r.message || '✅ Post mode: ' + mode);
+    fetchData();
+    openGroupMembers(id);
+  } catch (e) { alert(e.message); }
+}
+/* v5.4.0: per-member can_post toggle */
+async function toggleCanPost(userId, uname, val) {
+  try {
+    const r = await admApi(`/api/admin/groups/${membersCtxGroupId}/members/${userId}/can-post`, 'PUT', { can_post: !!val });
+    toast(r.message || '✅');
+    openGroupMembers(membersCtxGroupId);
+  } catch (e) { alert(e.message); }
+}
+async function addGroupMember() {
+  const uname = $('addMemberInput').value.trim();
+  if (!uname) return;
+  try {
+    const r = await admApi(`/api/admin/groups/${membersCtxGroupId}/add-member`, 'POST', { username: uname });
+    toast(r.message || '✅ Added'); openGroupMembers(membersCtxGroupId); fetchData();
+  } catch (e) { alert(e.message); }
+}
+async function removeGroupMember(userId, uname) {
+  askConfirm('✕ Remove Member', `"${uname}" ko group se remove karein?`, async () => {
+    try {
+      const r = await admApi(`/api/admin/groups/${membersCtxGroupId}/members/${userId}`, 'DELETE');
+      toast(r.message || '✅ Removed'); openGroupMembers(membersCtxGroupId); fetchData();
+    } catch (e) { alert(e.message); }
+  });
+}
+
+/* ---------- GROUP: broadcast ---------- */
+function openGroupBroadcast(id, name) {
+  $('grpMsgId').value = id;
+  $('grpMsgName').textContent = name;
+  $('grpMsgText').value = '';
+  $('grpMsgFile').value = '';
+  $('grpMsgFileNote').textContent = '';
+  showModal('grpMsgOverlay');
+}
+async function sendGroupBroadcast() {
+  const id = $('grpMsgId').value;
+  const msg = $('grpMsgText').value.trim();
+  const file = $('grpMsgFile').files[0];
+  if (!msg && !file) return alert('Message likho ya media attach karo');
+  try {
+    const fd = new FormData();
+    if (msg) fd.append('message', msg);
+    if (file) fd.append('media', file);
+    const r = await admUpload(`/api/admin/groups/${id}/message`, fd);
+    toast(r.message || '✅ Broadcast sent'); closeAllModals(); fetchData();
+  } catch (e) { alert(e.message); }
+}
+
+/* ---------- CHANNEL: create ---------- */
+function openCreateChannelModal() { $('newChannelName').value = ''; $('newChannelDesc').value = ''; showModal('chCreateOverlay'); setTimeout(() => $('newChannelName').focus(), 60); }
+async function createChannel() {
+  const name = $('newChannelName').value.trim();
+  if (!name) return alert('Channel name likho');
+  try {
+    const r = await admApi('/api/admin/channels', 'POST', { name, description: $('newChannelDesc').value.trim() });
+    toast(r.message || '✅ Channel created'); closeAllModals(); fetchData();
+  } catch (e) { alert(e.message); }
+}
+
+/* ---------- CHANNEL: edit ---------- */
+function openEditChannel(id) {
+  const c = (adminData.channels || []).find(x => x.id === id);
+  if (!c) return;
+  $('editChannelId').value = id;
+  $('editChannelName').value = c.name || '';
+  $('editChannelDesc').value = c.description || '';
+  showModal('chEditOverlay');
+}
+async function saveChannelEdit() {
+  const id = $('editChannelId').value;
+  const name = $('editChannelName').value.trim();
+  if (!name) return alert('Channel name khali nahi ho sakta');
+  try {
+    const r = await admApi('/api/admin/channels/' + id, 'PUT', { name, description: $('editChannelDesc').value.trim() });
+    toast(r.message || '✅ Channel updated'); closeAllModals(); fetchData();
+  } catch (e) { alert(e.message); }
+}
+
+/* ---------- CHANNEL: subscribers ---------- */
+let subsCtxChannelId = null;
+async function openChannelSubs(id) {
+  subsCtxChannelId = id;
+  try {
+    const r = await admApi(`/api/admin/channels/${id}/subscribers`);
+    $('subsChName').textContent = r.channel?.name || '';
+    const list = r.subscribers || [];
+    $('subsList').innerHTML = list.length ? list.map(s => `
+      <div class="member-chip">
+        <span class="mc-name">${esc(s.username)}</span>
+        <span class="mc-role">sub ${fmtTime(s.subscribed_at)}</span>
+        <button class="btn btn-danger btn-sm" onclick="removeChannelSub('${s.id}','${esc(s.username)}')">✕ Remove</button>
+      </div>`).join('') : '<p style="color:var(--muted)">Koi subscriber nahi</p>';
+    $('addSubInput').value = '';
+    showModal('chSubsOverlay');
+  } catch (e) { alert(e.message); }
+}
+async function addChannelSub() {
+  const uname = $('addSubInput').value.trim();
+  if (!uname) return;
+  try {
+    const r = await admApi(`/api/admin/channels/${subsCtxChannelId}/subscribe-user`, 'POST', { username: uname });
+    toast(r.message || '✅ Subscribed'); openChannelSubs(subsCtxChannelId); fetchData();
+  } catch (e) { alert(e.message); }
+}
+async function removeChannelSub(userId, uname) {
+  askConfirm('✕ Remove Subscriber', `"${uname}" ko channel se remove karein?`, async () => {
+    try {
+      const r = await admApi(`/api/admin/channels/${subsCtxChannelId}/subscribers/${userId}`, 'DELETE');
+      toast(r.message || '✅ Removed'); openChannelSubs(subsCtxChannelId); fetchData();
+    } catch (e) { alert(e.message); }
+  });
+}
+
+/* ---------- CHANNEL: post ---------- */
+function openChannelPost(id, name) {
+  $('chMsgId').value = id;
+  $('chMsgName').textContent = name;
+  $('chMsgText').value = '';
+  $('chMsgFile').value = '';
+  $('chMsgFileNote').textContent = '';
+  showModal('chMsgOverlay');
+}
+async function sendChannelPost() {
+  const id = $('chMsgId').value;
+  const msg = $('chMsgText').value.trim();
+  const file = $('chMsgFile').files[0];
+  if (!msg && !file) return alert('Post likho ya media attach karo');
+  try {
+    const fd = new FormData();
+    if (msg) fd.append('message', msg);
+    if (file) fd.append('media', file);
+    const r = await admUpload(`/api/admin/channels/${id}/message`, fd);
+    toast(r.message || '✅ Posted'); closeAllModals(); fetchData();
+  } catch (e) { alert(e.message); }
+}
+
+/* ---------- CHANNEL: notify all users ---------- */
+function openChannelNotify(id, name) {
+  $('chNotifyId').value = id;
+  $('chNotifyName').textContent = name;
+  $('chNotifyTitle').value = '';
+  $('chNotifyBody').value = '';
+  showModal('chNotifyOverlay');
+}
+async function sendChannelNotifyAll() {
+  const id = $('chNotifyId').value;
+  const body = $('chNotifyBody').value.trim();
+  if (!body) return alert('Notification body likho');
+  try {
+    const r = await admApi(`/api/admin/channels/${id}/notify`, 'POST', { title: $('chNotifyTitle').value.trim(), body });
+    toast(r.message || '✅ Notified'); closeAllModals(); fetchData();
+  } catch (e) { alert(e.message); }
+}
+
+/* ---------- CHANNEL: delete ---------- */
+async function delChannel(id, name) {
+  askConfirm('🗑 Delete Channel', `Channel "${name}" delete karein? Sab posts + subscribers bhi delete honge.`, async () => {
+    try { await admApi('/api/admin/channels/' + id, 'DELETE'); toast('✅ Channel deleted'); fetchData(); }
+    catch (e) { alert(e.message); }
+  });
+}
+
+/* ============================================================
+   v5.4.0: SUPPORT / ADS / TOOLS / SETTINGS — admin management
+   ============================================================ */
+function renderSupport() {
+  const rows = adminData.tickets || [];
+  const tbl = $('supportTbl');
+  if (!tbl) return;
+  if (!rows.length) { tbl.innerHTML = '<tr><th>Ticket</th><th>User</th><th>Status</th><th>When</th><th>Actions</th></tr><tr><td class="empty" colspan="5">Koi support message nahi 🆘</td></tr>'; return; }
+  tbl.innerHTML = `
+    <tr><th>Ticket</th><th>User</th><th>Status</th><th>When</th><th>Actions</th></tr>
+    ${rows.map(t => `
+    <tr>
+      <td><b>[${esc(t.type || 'other')}]</b> ${esc(t.subject || '(no subject)')}<br><span class="mono">${esc(String(t.message || '').slice(0, 90))}…</span>
+        ${t.admin_reply ? `<br><span style="color:#4ade80">✅ Replied: ${esc(String(t.admin_reply).slice(0, 60))}…</span>` : ''}</td>
+      <td>${esc(t.username || '?')}<br><span class="mono">${esc(t.email || '')}</span></td>
+      <td><span class="pill ${String(t.status) === 'open' ? 'pill-warn' : (String(t.status) === 'answered' ? 'pill-ok' : '')}">${esc(String(t.status || 'open').toUpperCase())}</span></td>
+      <td class="mono">${fmtTime(t.created_at)}</td>
+      <td class="actions"><div class="row-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openReplyTicket('${t.id}')">📝 Reply</button>
+        ${String(t.status) !== 'closed' ? `<button class="btn btn-ghost btn-sm" onclick="closeTicket('${t.id}')">✕ Close</button>` : ''}
+      </div></td>
+    </tr>`).join('')}`;
+}
+
+let replyTicketId = null;
+function openReplyTicket(id) {
+  const t = (adminData.tickets || []).find(x => x.id === id);
+  if (!t) return;
+  replyTicketId = id;
+  $('spReplyCtx').innerHTML = `<b>${esc(t.username || 'User')}</b> — [${esc(t.type)}] ${esc(t.subject || '')}<br>${esc(t.message || '')}`;
+  $('spReplyText').value = t.admin_reply || '';
+  showModal('supportReplyOverlay');
+}
+async function sendSupportReply() {
+  if (!replyTicketId) return;
+  const reply = $('spReplyText').value.trim();
+  if (!reply) return alert('Reply likho');
+  try {
+    const r = await admApi(`/api/admin/support/${replyTicketId}/reply`, 'PUT', { reply });
+    alert(r.message || '✅ Reply sent');
+    closeAllModals(); fetchData();
+  } catch (e) { alert(e.message); }
+}
+async function closeTicket(id) {
+  askConfirm('✕ Close Ticket', 'Ticket close kar dein? User reply nahi kar sakta.', async () => {
+    try {
+      const r = await admApi(`/api/admin/support/${id}/close`, 'PUT', {});
+      alert(r.message || '✅ Closed'); fetchData();
+    } catch (e) { alert(e.message); }
+  });
+}
+
+/* ---------- ADS ---------- */
+function renderAds() {
+  const rows = adminData.ads || [];
+  const tbl = $('adsTbl');
+  if (!tbl) return;
+  if (!rows.length) { tbl.innerHTML = '<tr><th>Ad</th><th>Link</th><th>Status</th><th>Created</th><th>Actions</th></tr><tr><td class="empty" colspan="5">Koi ad nahi — ➕ Create Ad button se banao</td></tr>'; return; }
+  tbl.innerHTML = `
+    <tr><th>Ad</th><th>Link</th><th>Status</th><th>Created</th><th>Actions</th></tr>
+    ${rows.map(a => `
+    <tr>
+      <td><b>${esc(a.title)}</b><br><span class="mono">${esc(a.body || '')}</span></td>
+      <td class="mono">${a.link_url ? `<a href="${esc(a.link_url)}" target="_blank" rel="noopener" style="color:var(--info)">${esc(a.link_url)}</a>` : '—'}</td>
+      <td><span class="pill ${a.active ? 'pill-ok' : 'pill-warn'}">${a.active ? 'ACTIVE' : 'OFF'}</span></td>
+      <td class="mono">${fmtTime(a.created_at)}</td>
+      <td class="actions"><div class="row-actions">
+        <button class="btn btn-ghost btn-sm" onclick="toggleAd('${a.id}', ${a.active ? 0 : 1})">${a.active ? '⏸️ Off' : '▶️ On'}</button>
+        <button class="btn btn-danger btn-sm" onclick="delAd('${a.id}','${esc(a.title)}')">🗑 Delete</button>
+      </div></td>
+    </tr>`).join('')}`;
+}
+function openCreateAdModal() {
+  ['adTitle', 'adBody', 'adLink', 'adLabel'].forEach(i => { if ($(i)) $(i).value = ''; });
+  if ($('adNotify')) $('adNotify').checked = true;
+  showModal('adCreateOverlay');
+}
+async function createAd() {
+  const title = $('adTitle').value.trim();
+  if (!title) return alert('Title required');
+  const body = {
+    title, body: $('adBody').value.trim(), link_url: $('adLink').value.trim(),
+    link_label: $('adLabel').value.trim() || 'Open', notify: $('adNotify').checked
+  };
+  try {
+    const r = await admApi('/api/admin/ads', 'POST', body);
+    alert(r.message || '✅'); closeAllModals(); fetchData();
+  } catch (e) { alert(e.message); }
+}
+async function toggleAd(id, active) {
+  try { const r = await admApi(`/api/admin/ads/${id}`, 'PUT', { active: !!active }); toast(r.message || '✅'); fetchData(); }
+  catch (e) { alert(e.message); }
+}
+async function delAd(id, title) {
+  askConfirm('🗑 Delete Ad', `"${title}" delete karein?`, async () => {
+    try { const r = await admApi(`/api/admin/ads/${id}`, 'DELETE'); alert(r.message || '✅'); fetchData(); }
+    catch (e) { alert(e.message); }
+  });
+}
+
+/* ---------- TOOLS ---------- */
+function renderTools() {
+  const rows = adminData.tools || [];
+  const tbl = $('toolsTbl');
+  if (!tbl) return;
+  if (!rows.length) { tbl.innerHTML = '<tr><th>Tool</th><th>URL</th><th>Status</th><th>Actions</th></tr><tr><td class="empty" colspan="4">Koi tool nahi</td></tr>'; return; }
+  tbl.innerHTML = `
+    <tr><th>Tool</th><th>URL</th><th>Status</th><th>Actions</th></tr>
+    ${rows.map(t => `
+    <tr>
+      <td><b>${esc(t.icon || '')} ${esc(t.name)}</b><br><span class="mono">${esc(t.description || '')}</span></td>
+      <td class="mono"><a href="${esc(t.url)}" target="_blank" rel="noopener" style="color:var(--info)">${esc(t.url)}</a></td>
+      <td><span class="pill ${t.active ? 'pill-ok' : 'pill-warn'}">${t.active ? 'ACTIVE' : 'OFF'}</span></td>
+      <td class="actions"><div class="row-actions">
+        <button class="btn btn-ghost btn-sm" onclick="toggleTool('${t.id}', ${t.active ? 0 : 1})">${t.active ? '⏸️ Off' : '▶️ On'}</button>
+        <button class="btn btn-danger btn-sm" onclick="delTool('${t.id}','${esc(t.name)}')">🗑 Delete</button>
+      </div></td>
+    </tr>`).join('')}`;
+}
+function openCreateToolModal() {
+  ['tlName', 'tlUrl', 'tlDesc', 'tlIcon'].forEach(i => { if ($(i)) $(i).value = ''; });
+  showModal('toolCreateOverlay');
+}
+async function createTool() {
+  const name = $('tlName').value.trim();
+  const url = $('tlUrl').value.trim();
+  if (!name || !url) return alert('Name + URL required');
+  try {
+    const r = await admApi('/api/admin/tools', 'POST', { name, url, description: $('tlDesc').value.trim(), icon: $('tlIcon').value.trim() });
+    alert(r.message || '✅'); closeAllModals(); fetchData();
+  } catch (e) { alert(e.message); }
+}
+async function toggleTool(id, active) {
+  try { const r = await admApi(`/api/admin/tools/${id}`, 'PUT', { active: !!active }); toast(r.message || '✅'); fetchData(); }
+  catch (e) { alert(e.message); }
+}
+async function delTool(id, name) {
+  askConfirm('🗑 Delete Tool', `"${name}" delete karein?`, async () => {
+    try { const r = await admApi(`/api/admin/tools/${id}`, 'DELETE'); alert(r.message || '✅'); fetchData(); }
+    catch (e) { alert(e.message); }
+  });
+}
+
+/* ---------- SETTINGS (social links + help line) ---------- */
+const ADMIN_SOCIAL_FIELDS = [
+  ['whatsapp_number', '📱 WhatsApp Help Number', '03347382564'],
+  ['help_email', '✉️ Help Email', 'cryptixshadowkernel@gmail.com'],
+  ['tiktok', '🎮 TikTok', 'https://www.tiktok.com/@…'],
+  ['facebook', '🏠 Facebook', 'https://facebook.com/…'],
+  ['github', '🧩 GitHub', 'https://github.com/…'],
+  ['x', '✖️ X (Twitter)', 'https://x.com/…'],
+  ['linkedin', '💼 LinkedIn', 'https://linkedin.com/…'],
+  ['telegram', '✈️ Telegram', 'https://t.me/…'],
+  ['telegram_channel', '📣 Telegram Channel', 'https://t.me/…'],
+  ['whatsapp_channel', '📢 WhatsApp Channel', 'https://whatsapp.com/channel/…'],
+  ['instagram', '📷 Instagram', 'https://instagram.com/…'],
+  ['youtube', '🔴 YouTube', 'https://youtube.com/@…']
+];
+function renderSettingsForm() {
+  const box = $('settingsForm');
+  if (!box) return;
+  const st = adminData.settings || {};
+  box.innerHTML = `
+    <div class="stat-card" style="margin-bottom:14px">
+      <div style="font-size:13.5px;color:var(--muted);line-height:1.7">
+        Yeh links + numbers user app ke <b style="color:var(--accent)">Help & Support modal</b> me dikhte hain.<br>
+        Placeholder links hain — apni real links yahan paste karo, sab users ko turant update ho jayega.
+      </div>
+    </div>
+    ${ADMIN_SOCIAL_FIELDS.map(([k, label, ph]) => `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <label style="width:220px;font-size:13px;font-weight:700;color:var(--text)">${label}</label>
+      <input id="set_${k}" value="${esc(st[k] || '')}" placeholder="${esc(ph)}" style="flex:1">
+    </div>`).join('')}
+    <button class="btn" onclick="saveSettings()">💾 Save Settings</button>`;
+}
+async function saveSettings() {
+  const body = {};
+  ADMIN_SOCIAL_FIELDS.forEach(([k]) => { const el = $('set_' + k); if (el) body[k] = el.value.trim(); });
+  try {
+    const r = await admApi('/api/admin/settings', 'PUT', body);
+    toast(r.message || '✅ Saved'); alert(r.message || '✅ Settings saved — users ke Help modal me update ho gaya');
+  } catch (e) { alert(e.message); }
+}
+
+function downloadBackup() {
+  fetch('/api/admin/backup', { headers: { 'Authorization': 'Bearer ' + adminToken } })
+    .then(r => r.json())
+    .then(bk => {
+      const blob = new Blob([JSON.stringify(bk, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `csk4-admin-backup-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      alert('📦 Admin backup downloaded!');
+    })
+    .catch(e => alert('Backup failed: ' + e.message));
+}
+
+/* themed confirm modal (native confirm() ki jagah — consistent UI) */
+let confirmAction = null;
+function askConfirm(title, text, onYes) {
+  confirmAction = onYes || null;
+  $('confirmTitle').textContent = title || 'Confirm';
+  $('confirmText').textContent = text || '';
+  closeAllModals();
+  $('confirmOverlay').classList.add('active');
+}
+function confirmYes() {
+  const fn = confirmAction; confirmAction = null;
+  closeAllModals();
+  if (fn) fn();
+}
+
+function toast(msg) {
+  const d = document.createElement('div');
+  d.textContent = msg;
+  d.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#D9B872;color:#201a0d;padding:10px 22px;border-radius:22px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 10px 30px rgba(0,0,0,.4)';
+  document.body.appendChild(d);
+  setTimeout(() => d.remove(), 2200);
+}
+
+/* ---------- BOOT ---------- */
+(async function boot() {
+  if (adminToken) {
+    try {
+      const me = await admApi('/api/me');
+      if (me.user && me.user.isAdmin) { adminMe = me.user; enterAdmin(); return; }
+    } catch {}
+    adminToken = ''; localStorage.removeItem('csk4_admin_token');
+  }
+  $('loginScreen').style.display = 'flex';
+})();
+</script>
+</body>
+</html>
