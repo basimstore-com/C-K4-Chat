@@ -6,8 +6,8 @@
 <title>C$K4 Chat — Admin Panel 👑</title>
 <style>
   :root {
-    --bg: #0f172a; --panel: #1e293b; --panel2: #273449; --border: #334155;
-    --text: #e2e8f0; --muted: #94a3b8; --accent: #25D366; --accent2: #128C7E;
+    --bg: #0a0a0a; --panel: #101010; --panel2: #161310; --border: #2a2416;
+    --text: #EDE0C0; --muted: #8f8368; --accent: #D9B872; --accent2: #B8935A;
     --danger: #ef4444; --warn: #f59e0b; --info: #38bdf8;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
@@ -16,7 +16,7 @@
   /* ---------- LOGIN ---------- */
   #loginScreen {
     display: flex; align-items: center; justify-content: center; min-height: 100vh;
-    background: radial-gradient(circle at 30% 20%, #134e4a 0%, #0f172a 60%);
+    background: radial-gradient(circle at 30% 20%, #201a0d 0%, #0a0a0a 60%);
   }
   .login-card {
     background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
@@ -32,7 +32,7 @@
   .login-card input:focus { border-color: var(--accent); }
   .btn {
     display: inline-block; padding: 11px 18px; border-radius: 10px; border: none; cursor: pointer;
-    background: var(--accent); color: #04140a; font-weight: 700; font-size: 14px; transition: .15s;
+    background: var(--accent); color: #201a0d; font-weight: 700; font-size: 14px; transition: .15s;
   }
   .btn:hover { filter: brightness(1.1); }
   .btn-full { width: 100%; margin-top: 18px; }
@@ -93,7 +93,7 @@
     color: var(--muted); font-size: 13.5px; font-weight: 600; white-space: nowrap; transition: .15s;
   }
   nav button:hover { color: var(--text); background: var(--panel2); }
-  nav button.active { background: var(--accent); color: #04140a; }
+  nav button.active { background: var(--accent); color: #201a0d; }
 
   main { padding: 24px 26px; max-width: 1280px; margin: 0 auto; }
   .tab-panel { display: none; }
@@ -121,17 +121,17 @@
     text-align: left; padding: 11px 14px; color: var(--muted); font-size: 11.5px; text-transform: uppercase;
     letter-spacing: .5px; border-bottom: 1px solid var(--border); background: var(--panel2); white-space: nowrap;
   }
-  td { padding: 10px 14px; border-bottom: 1px solid rgba(51,65,85,.5); vertical-align: top; }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
   tr:last-child td { border-bottom: none; }
-  tr:hover td { background: rgba(37,211,102,.04); }
+  tr:hover td { background: rgba(217,184,114,.06); }
   .badge { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; }
-  .badge.on { background: rgba(37,211,102,.15); color: var(--accent); }
+  .badge.on { background: rgba(217,184,114,.15); color: var(--accent); }
   .badge.off { background: rgba(148,163,184,.15); color: var(--muted); }
   .badge.bot { background: rgba(56,189,248,.15); color: var(--info); }
   .badge.admin { background: rgba(245,158,11,.15); color: var(--warn); }
   .badge.report { background: rgba(239,68,68,.15); color: var(--danger); }
   .badge.pending { background: rgba(245,158,11,.15); color: var(--warn); }
-  .badge.resolved { background: rgba(37,211,102,.15); color: var(--accent); }
+  .badge.resolved { background: rgba(217,184,114,.15); color: var(--accent); }
   .truncate { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mono { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--muted); }
   .empty { padding: 40px; text-align: center; color: var(--muted); }
@@ -498,7 +498,7 @@ function downloadBackup() {
 function toast(msg) {
   const d = document.createElement('div');
   d.textContent = msg;
-  d.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#25D366;color:#04140a;padding:10px 22px;border-radius:22px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 10px 30px rgba(0,0,0,.4)';
+  d.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#D9B872;color:#201a0d;padding:10px 22px;border-radius:22px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 10px 30px rgba(0,0,0,.4)';
   document.body.appendChild(d);
   setTimeout(() => d.remove(), 2200);
 }
