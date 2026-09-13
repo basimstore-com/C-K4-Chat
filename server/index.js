@@ -7,6 +7,7 @@
 require('dotenv').config();
 
 const express     = require('express');
+const compression = require('compression');
 const http        = require('http');
 const { Server }  = require('socket.io');
 const path        = require('path');
@@ -17,6 +18,8 @@ const bcrypt      = require('bcryptjs');
 const jwt         = require('jsonwebtoken');
 const crypto      = require('crypto');
 const CryptoJS    = require('crypto-js');
+const { authenticator } = require('otplib');
+const QRCode      = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
 const cors        = require('cors');
 const helmet      = require('helmet');
@@ -34,7 +37,7 @@ const PORT         = Number(process.env.PORT || 3000);
 const JWT_SECRET   = process.env.JWT_SECRET || 'CSK4_FALLBACK_SECRET_2026';
 const ENC_KEY      = process.env.ENCRYPTION_KEY || 'CSK4_ENC_KEY_V5_2026';
 const MAX_FILE     = Math.min(Math.max(parseInt(process.env.MAX_FILE_SIZE || '104857600', 10) || 104857600, 1024 * 1024), 250 * 1024 * 1024);
-const TOKEN_TTL    = process.env.TOKEN_TTL || '7d';
+const TOKEN_TTL    = process.env.TOKEN_TTL || '1d';
 const APP_VERSION  = '5.2.0';
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
   .split(',')
@@ -62,14 +65,30 @@ const server = http.createServer(app);
 const io   = new Server(server, { cors: { ...corsOptions, methods: ['GET', 'POST'] } });
 
 /* ---------------- MIDDLEWARE ---------------- */
-app.use(helmet({ crossOriginResourcePolicy: false, contentSecurityPolicy: false }));
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      mediaSrc: ["'self'", "blob:"],
+      connectSrc: ["'self'", "ws:", "wss:"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameSrc: ["'none'"]
+    }
+  }
+}));
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
+app.use(compression());
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-const apiLimiter = rateLimit({ windowMs: 15*60*1000, max: 1000, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests, please slow down.' } });
-const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 25, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many login attempts. Try again later.' } });
+const apiLimiter = rateLimit({ windowMs: 15*60*1000, max: 400, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests, please slow down.' } });
+const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 15, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many login attempts. Try again later.' } });
 app.use('/api/', apiLimiter);
 
 /* ---------------- PATHS ---------------- */
@@ -101,15 +120,16 @@ const allQuery = (sql, params = []) => new Promise((resolve, reject) => {
   db.all(sql, params, (err, rows) => { if (err) reject(err); else resolve(rows); });
 });
 
-/* ---------------- ENCRYPTION (AES-256) ---------------- */
+/* ---------------- ENCRYPTION (AES-256, PBKDF2-derived key) ---------------- */
+const ENC_KEY_DERIVED = CryptoJS.PBKDF2(ENC_KEY, 'csk4-static-salt-v5', { keySize: 256 / 32, iterations: 10000 });
 function encryptText(text) {
   if (text === null || text === undefined || text === '') return text;
-  try { return CryptoJS.AES.encrypt(String(text), ENC_KEY).toString(); } catch { return text; }
+  try { return CryptoJS.AES.encrypt(String(text), ENC_KEY_DERIVED.toString()).toString(); } catch { return text; }
 }
 function decryptText(encrypted) {
   if (!encrypted) return encrypted;
   try {
-    const dec = CryptoJS.AES.decrypt(encrypted, ENC_KEY).toString(CryptoJS.enc.Utf8);
+    const dec = CryptoJS.AES.decrypt(encrypted, ENC_KEY_DERIVED.toString()).toString(CryptoJS.enc.Utf8);
     return dec || encrypted;
   } catch { return encrypted; }
 }
@@ -229,6 +249,7 @@ CREATE TABLE IF NOT EXISTS users (
   is_admin INTEGER DEFAULT 0,
   two_fa_enabled INTEGER DEFAULT 0,
   two_fa_code TEXT DEFAULT '',
+  two_fa_secret TEXT DEFAULT '',
   wallpaper TEXT DEFAULT '',
   privacy_last_seen TEXT DEFAULT 'everyone',
   privacy_profile_pic TEXT DEFAULT 'everyone',
@@ -317,7 +338,7 @@ CREATE TABLE IF NOT EXISTS stories (
   content TEXT,
   media_url TEXT,
   caption TEXT DEFAULT '',
-  background TEXT DEFAULT '#075E54',
+  background TEXT DEFAULT '#201a0d',
   tags TEXT DEFAULT '[]',
   views INTEGER DEFAULT 0,
   is_highlight INTEGER DEFAULT 0,
@@ -528,6 +549,14 @@ function initDB() {
         }
         await runQuery('CREATE TABLE IF NOT EXISTS message_reactions (id INTEGER PRIMARY KEY AUTOINCREMENT, message_id TEXT NOT NULL, user_id TEXT NOT NULL, emoji TEXT NOT NULL, created_at INTEGER DEFAULT 0, UNIQUE(message_id, user_id))');
         await runQuery('CREATE INDEX IF NOT EXISTS idx_reactions_msg ON message_reactions(message_id)');
+
+        /* Older databases pre-date TOTP-based 2FA. Add the secret column without
+           requiring users to delete their existing database. */
+        const userCols = await allQuery('PRAGMA table_info(users)');
+        const userColNames = new Set(userCols.map(c => c.name));
+        if (!userColNames.has('two_fa_secret')) {
+          await runQuery(`ALTER TABLE users ADD COLUMN two_fa_secret TEXT DEFAULT ''`);
+        }
         resolve();
       } catch (migrationError) {
         reject(migrationError);
@@ -676,7 +705,7 @@ io.on('connection', async (socket) => {
       } else {
         /* queue for offline delivery */
         await runQuery(`INSERT INTO offline_messages (id, from_user, to_user, message, type, media_url, payload, created_at) VALUES (?,?,?,?,?,?,?,?)`,
-          [uuidv4(), uid, toUser, enc, type, media_url, JSON.stringify({ media_name, media_size, duration, reply_to, forwarded, view_once }), Date.now()]);
+          [id, uid, toUser, enc, type, media_url, JSON.stringify({ media_name, media_size, duration, reply_to, forwarded, view_once }), Date.now()]);
         socket.emit('message-status', { id, status: 'queued' });
         /* ---- AUTO-REPLY (Feature 38) ---- */
         const target = await getQuery('SELECT id, auto_reply_enabled, auto_reply_message, username FROM users WHERE id=?', [toUser]);
@@ -1036,14 +1065,17 @@ function checkWinnerTTT(board) {
 app.post('/api/register', authLimiter, [
   body('username').trim().isLength({ min: 2, max: 30 }).escape(),
   body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 6 })
+  body('password').isLength({ min: 8 }).withMessage('Password kam az kam 8 characters ka hona chahiye')
+    .matches(/[A-Z]/).withMessage('Password me ek badda (uppercase) letter hona chahiye')
+    .matches(/[a-z]/).withMessage('Password me ek chhota (lowercase) letter hona chahiye')
+    .matches(/[0-9]/).withMessage('Password me ek number hona chahiye')
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ error: 'Invalid input', details: errors.array() });
   try {
     const { username, email, password } = req.body;
     const uname = clean(username), uemail = clean(email).toLowerCase();
-    const existsName = await getQuery('SELECT id FROM users WHERE username=?', [uname]);
+    const existsName = await getQuery('SELECT id FROM users WHERE username=? COLLATE NOCASE', [uname]);
     if (existsName) return res.status(409).json({ error: 'Username already taken' });
     const existsMail = await getQuery('SELECT id FROM users WHERE email=?', [uemail]);
     if (existsMail) return res.status(409).json({ error: 'Email already registered' });
@@ -1052,6 +1084,7 @@ app.post('/api/register', authLimiter, [
     await runQuery(`INSERT INTO users (id, username, email, password, bio, phone, created_at, last_seen) VALUES (?,?,?,?,?,?,?,?)`,
       [id, uname, uemail, hash, 'Hey there! I am using C$K4 Chat! 🚀', '', Date.now(), Date.now()]);
     await audit(id, 'register', uname);
+    io.emit('new-user-registered', { id, username: uname, profile_pic: '', bio: 'Hey there! I am using C$K4 Chat! 🚀' });
     const token = jwt.sign({ id, username: uname, email: uemail, isAdmin: 0 }, JWT_SECRET, { expiresIn: TOKEN_TTL });
     res.status(201).json({ message: 'Account created successfully! 🎉', token, user: { id, username: uname, email: uemail, profile_pic: '', bio: 'Hey there! I am using C$K4 Chat! 🚀', isAdmin: 0 } });
   } catch (e) {
@@ -1076,7 +1109,8 @@ app.post('/api/login', authLimiter, [
     if (user.two_fa_enabled) {
       const code = String(twofa_code || '').trim();
       if (!code) return res.status(200).json({ requires2FA: true, message: '2FA code required' });
-      if (code !== String(user.two_fa_code || '')) return res.status(401).json({ error: 'Invalid 2FA code' });
+      const valid = authenticator.check(code, user.two_fa_secret);
+      if (!valid) return res.status(401).json({ error: 'Invalid 2FA code' });
     }
     const token = jwt.sign({ id: user.id, username: user.username, email: user.email, isAdmin: user.is_admin }, JWT_SECRET, { expiresIn: TOKEN_TTL });
     await runQuery('UPDATE users SET last_seen=? WHERE id=?', [Date.now(), user.id]);
@@ -1114,16 +1148,34 @@ app.post('/api/logout', authMiddleware, async (req, res) => {
   res.json({ message: 'Logged out successfully' });
 });
 
-/* ---- 2FA ---- */
+/* ---- 2FA (TOTP — Google Authenticator / Authy compatible) ---- */
 app.post('/api/2fa/enable', authMiddleware, async (req, res) => {
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  await runQuery('UPDATE users SET two_fa_enabled=1, two_fa_code=? WHERE id=?', [code, req.user.id]);
-  await audit(req.user.id, '2fa-enable', '');
-  res.json({ message: '2FA enabled ✅', code });
+  try {
+    const secret = authenticator.generateSecret();
+    const user = await getQuery('SELECT email, username FROM users WHERE id=?', [req.user.id]);
+    const otpauth = authenticator.keyuri(user.email || user.username, 'C$K4 Chat', secret);
+    const qr = await QRCode.toDataURL(otpauth);
+    /* Save secret but keep two_fa_enabled=0 until the user verifies a code from their app */
+    await runQuery('UPDATE users SET two_fa_secret=? WHERE id=?', [secret, req.user.id]);
+    await audit(req.user.id, '2fa-enable-pending', '');
+    res.json({ message: 'Google Authenticator / Authy se QR scan karke code verify karein', secret, qr });
+  } catch (e) { res.status(500).json({ error: '2FA setup failed' }); }
+});
+
+app.post('/api/2fa/verify-enable', authMiddleware, async (req, res) => {
+  try {
+    const user = await getQuery('SELECT two_fa_secret FROM users WHERE id=?', [req.user.id]);
+    if (!user || !user.two_fa_secret) return res.status(400).json({ error: 'Pehle /2fa/enable call karein' });
+    const valid = authenticator.check(String(req.body.code || '').trim(), user.two_fa_secret);
+    if (!valid) return res.status(401).json({ error: 'Invalid code — dobara try karein' });
+    await runQuery('UPDATE users SET two_fa_enabled=1 WHERE id=?', [req.user.id]);
+    await audit(req.user.id, '2fa-enable', '');
+    res.json({ message: '2FA enabled ✅' });
+  } catch (e) { res.status(500).json({ error: '2FA verification failed' }); }
 });
 
 app.post('/api/2fa/disable', authMiddleware, async (req, res) => {
-  await runQuery('UPDATE users SET two_fa_enabled=0, two_fa_code=\'\' WHERE id=?', [req.user.id]);
+  await runQuery("UPDATE users SET two_fa_enabled=0, two_fa_secret='' WHERE id=?", [req.user.id]);
   await audit(req.user.id, '2fa-disable', '');
   res.json({ message: '2FA disabled' });
 });
@@ -1131,7 +1183,8 @@ app.post('/api/2fa/disable', authMiddleware, async (req, res) => {
 app.post('/api/2fa/verify', authMiddleware, async (req, res) => {
   const user = await getQuery('SELECT * FROM users WHERE id=?', [req.user.id]);
   if (!user || !user.two_fa_enabled) return res.status(400).json({ error: '2FA not enabled' });
-  if (String(req.body.code || '') !== String(user.two_fa_code || '')) return res.status(401).json({ error: 'Invalid 2FA code' });
+  const valid = authenticator.check(String(req.body.code || '').trim(), user.two_fa_secret);
+  if (!valid) return res.status(401).json({ error: 'Invalid 2FA code' });
   res.json({ message: '2FA verified ✅' });
 });
 
@@ -1150,7 +1203,7 @@ app.post('/api/profile', authMiddleware, upload.single('profile'), async (req, r
       return res.status(400).json({ error: 'Username must be 2–30 characters' });
     }
     if (newUsername !== existing.username) {
-      const taken = await getQuery('SELECT id FROM users WHERE username=? AND id<>?', [newUsername, req.user.id]);
+      const taken = await getQuery('SELECT id FROM users WHERE username=? COLLATE NOCASE AND id<>?', [newUsername, req.user.id]);
       if (taken) return res.status(409).json({ error: 'Username already taken' });
     }
     await runQuery('UPDATE users SET username=?, bio=?, phone=?, profile_pic=? WHERE id=?',
@@ -1398,7 +1451,23 @@ app.post('/api/view-once', authMiddleware, async (req, res) => {
       if (msg.to_user === req.user.id) emitToUser(msg.from_user, 'view-once-opened', { id, by: req.user.id });
     }
     const source = msg || groupMsg;
-    res.json({ message: decryptText(source.message), media_url: source.media_url, type: source.type, duration: source.duration, media_name: source.media_name, media_size: source.media_size });
+    const responsePayload = { message: decryptText(source.message), media_url: source.media_url, type: source.type, duration: source.duration, media_name: source.media_name, media_size: source.media_size };
+
+    /* Actually delete the media from disk + scrub DB so it can never be fetched again.
+       Only do this for the recipient's view (not the sender re-checking their own sent message). */
+    const isRecipientViewing = groupMsg ? (groupMsg.sender_id !== req.user.id) : (msg.to_user === req.user.id);
+    if (isRecipientViewing && source.media_url) {
+      const relative = String(source.media_url).replace(/^\/uploads\//, '');
+      const fullPath = path.join(UPLOADS, relative);
+      fse.remove(fullPath).catch(() => {});
+      if (groupMsg) {
+        await runQuery(`UPDATE group_messages SET media_url=NULL, message='' WHERE id=?`, [id]);
+      } else {
+        await runQuery(`UPDATE messages SET media_url=NULL, message='' WHERE id=?`, [id]);
+      }
+    }
+
+    res.json(responsePayload);
   } catch (e) { res.status(500).json({ error: 'View once failed' }); }
 });
 
@@ -1442,7 +1511,7 @@ app.post('/api/forward', authMiddleware, async (req, res) => {
       const fwd = { id: nid, from_user: req.user.id, to_user: tt, message: decryptText(msg.message), type: msg.type, media_url: msg.media_url, media_name: msg.media_name, duration: msg.duration, forwarded: true, timestamp: Date.now() };
       if (isOnline(tt)) { emitToUser(tt, 'new-message', fwd); await runQuery('UPDATE messages SET delivered=1 WHERE id=?', [nid]); }
       else await runQuery(`INSERT INTO offline_messages (id, from_user, to_user, message, type, media_url, payload, created_at) VALUES (?,?,?,?,?,?,?,?)`,
-        [uuidv4(), req.user.id, tt, msg.message, msg.type, msg.media_url, JSON.stringify({ media_name: msg.media_name, duration: msg.duration, forwarded: true }), Date.now()]);
+        [nid, req.user.id, tt, msg.message, msg.type, msg.media_url, JSON.stringify({ media_name: msg.media_name, duration: msg.duration, forwarded: true }), Date.now()]);
       count++;
     }
     res.json({ message: `Forwarded to ${count} chat(s) ✅` });
@@ -1606,7 +1675,7 @@ app.post('/api/story', authMiddleware, upload.single('story'), async (req, res) 
     const type = clean(req.body.type || (req.file ? 'image' : 'text'));
     const text = clean(req.body.text || '');
     const caption = clean(req.body.caption || '');
-    const background = clean(req.body.background || '#075E54');
+    const background = clean(req.body.background || '#201a0d');
     const tags = parseIds(req.body.tags);
     if (type === 'text' && !text) return res.status(400).json({ error: 'Story text required' });
     if (type !== 'text' && !req.file) return res.status(400).json({ error: 'Story media required' });
@@ -2072,8 +2141,8 @@ app.get(['/admin', '/admin/', '/admin/admin.html'], (req, res) => {
 });
 
 app.use('/uploads', express.static(UPLOADS, { maxAge: '1d' }));
-app.use('/admin', express.static(ADMIN_DIR));
-app.use(express.static(PUBLIC_DIR));
+app.use('/admin', express.static(ADMIN_DIR, { maxAge: '10m' }));
+app.use(express.static(PUBLIC_DIR, { maxAge: '10m' }));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', app: `C$K4 Chat v${APP_VERSION}`, online: onlineUsers.size, time: Date.now() }));
 
