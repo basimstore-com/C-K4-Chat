@@ -4,7 +4,7 @@ Ek complete real-time chat application — **Node.js + Express + Socket.io + SQL
 
 > This is an independent messenger implementation. It does not use WhatsApp private APIs or copy WhatsApp branding.
 
-## v5.2.0 upgrade
+## v16.4.2 upgrade
 
 - Production startup now requires custom `JWT_SECRET`, `ENCRYPTION_KEY` and `ADMIN_PASSWORD`.
 - Removed third-party runtime scripts and unsafe wildcard CORS defaults.
