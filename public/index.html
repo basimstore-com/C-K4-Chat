@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
   <title>C$K4 Chat v5.2 — Secure Messenger</title>
   <meta name="description" content="C$K4 Chat v5.2 — Secure messaging with calls, stories, groups, channels, polls and admin controls.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23075E54'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='%2325D366' font-family='Arial' font-weight='bold'>C$</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230a0a0a'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='%23D9B872' font-family='Georgia' font-weight='bold'>C$</text></svg>">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -30,6 +31,7 @@
     <div class="auth-field">
       <label>Password</label>
       <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password">
+      <small id="pwHint" class="auth-hint hidden">Kam az kam 8 characters, 1 badda letter, 1 chhota letter, aur 1 number</small>
     </div>
     <div class="auth-field auth-2fa hidden" id="twofaField">
       <label>2FA Code (6 digits)</label>
@@ -271,7 +273,7 @@
       </div>
       <div class="form-field" id="stTextField"><label>Text</label><textarea id="stText" placeholder="Aaj ka din… 🚀" maxlength="700"></textarea></div>
       <div class="form-field" id="stBgField"><label>Background color</label>
-        <input type="color" id="stBg" value="#075E54" style="height:42px;width:100%;border-radius:10px;border:1px solid var(--border);background:var(--input-bg);cursor:pointer">
+        <input type="color" id="stBg" value="#B8935A" style="height:42px;width:100%;border-radius:10px;border:1px solid var(--border);background:var(--input-bg);cursor:pointer">
       </div>
       <div class="form-field hidden" id="stMediaField"><label>Media file</label><input type="file" id="stMedia" accept="image/*,video/*"></div>
       <div class="form-field"><label>Caption (optional)</label><input id="stCaption" placeholder="Story caption…"></div>
@@ -315,6 +317,7 @@
       <div class="call-controls" id="callControls">
         <button class="call-ctrl mute" id="btnMute" onclick="toggleMute()" title="Mute">🎤</button>
         <button class="call-ctrl cam hidden" id="btnCam" onclick="toggleCam()" title="Camera">🎥</button>
+        <button class="call-ctrl switchcam hidden" id="btnSwitchCam" onclick="switchCamera()" title="Switch Camera">🔄</button>
         <button class="call-ctrl screen hidden" id="btnScreen" onclick="toggleScreenShare()" title="Share screen">🖥️</button>
         <button class="call-ctrl end" id="btnEndCall" onclick="endCall()">📵</button>
         <button class="call-ctrl accept hidden" id="btnAcceptCall" onclick="acceptIncomingCall()">✅</button>
