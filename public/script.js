@@ -82,7 +82,7 @@ function authHeaders() {
 }
 
 /* ============================================================
-   ✅ UPDATED api() — server validation errors ko readable banata hai
+   api() — server validation errors ko readable banata hai
    ============================================================ */
 async function api(path, opts = {}) {
   try {
@@ -124,7 +124,7 @@ function avatarHtml(p) {
    AUTH SCREEN
    ============================================================ */
 
-/* ✅ UPDATED switchAuthTab — regUsernameField wrapper ko toggle karta hai */
+/* ✅ switchAuthTab — regUsernameField + pwHint wrapper ko toggle karta hai */
 function switchAuthTab(tab) {
   const isLogin = tab === 'login';
   $('tabLogin').classList.toggle('active', isLogin);
@@ -143,7 +143,7 @@ function fillDemo(email, pass) {
   toast('Credentials filled — Login dabao! 👍', 'info');
 }
 
-/* ✅ UPDATED handleAuth — clear client-side validation + readable error display */
+/* ✅ handleAuth — clear client-side validation + readable error display */
 async function handleAuth() {
   const isLogin = $('tabLogin').classList.contains('active');
   const email = $('authEmail').value.trim().toLowerCase();
