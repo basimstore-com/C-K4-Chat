@@ -115,6 +115,8 @@ function switchAuthTab(tab) {
   $('tabLogin').classList.toggle('active', isLogin);
   $('tabRegister').classList.toggle('active', !isLogin);
   $('regUsername').parentElement.classList.toggle('hidden', isLogin);
+  const pwHint = $('pwHint');
+  if (pwHint) pwHint.classList.toggle('hidden', isLogin);
   $('authBtn').textContent = isLogin ? 'Login 🚀' : 'Register ✨';
 }
 function fillDemo(email, pass) {
@@ -184,9 +186,17 @@ async function enterApp() {
 /* ---------------- SOCKET ---------------- */
 function initSocket() {
   if (socket) { try { socket.disconnect(); } catch {} }
-  socket = io({ auth: { token: TOKEN } });
+  socket = io({
+    auth: { token: TOKEN },
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 500,
+    reconnectionDelayMax: 3000,
+    timeout: 10000
+  });
   socket.on('connect', () => console.log('✅ Socket connected:', socket.id));
   socket.on('connect_error', (e) => console.error('Socket auth error:', e.message));
+  socket.on('new-user-registered', () => { loadUsers(); });
 
   /* --- direct messages --- */
   socket.on('new-message', (m) => {
@@ -317,9 +327,9 @@ function initSocket() {
 
   /* --- calls --- */
   socket.on('incoming-call', (d) => showIncomingCall(d));
-  socket.on('call-accepted', (d) => onCallAccepted(d));
-  socket.on('call-rejected', (d) => { hideCallUI(); toast('❌ Call rejected', 'error'); cleanupCall(); });
-  socket.on('call-ended', (d) => { hideCallUI(); toast('📵 Call ended', 'info'); cleanupCall(); });
+  socket.on('call-accepted', (d) => { stopRingtone(); stopVibration(); onCallAccepted(d); });
+  socket.on('call-rejected', (d) => { stopRingtone(); stopVibration(); hideCallUI(); toast('❌ Call rejected', 'error'); cleanupCall(); });
+  socket.on('call-ended', (d) => { stopRingtone(); stopVibration(); hideCallUI(); toast('📵 Call ended', 'info'); cleanupCall(); });
   socket.on('webrtc-signal', async (d) => {
     try {
       if (d.signal.type === 'offer') {
@@ -360,12 +370,70 @@ function notifyToast(m, isGroup = false) {
     : m.type === 'text' || m.type === 'scheduled' || m.type === 'auto-reply' ? (m.message || '')
     : previewOf(m);
   toast(`💬 ${name}: ${body.slice(0, 60)}`, 'info', 3000);
+  playNotifySound();
   if (document.hidden && 'Notification' in window) {
     try {
       if (Notification.permission === 'granted') new Notification(`C$K4 Chat — ${name}`, { body: (body || '').slice(0, 80) });
       else if (Notification.permission !== 'denied') Notification.requestPermission();
     } catch {}
   }
+}
+
+/* ---------------- SOUND: NOTIFICATION BEEP + RINGTONE ---------------- */
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  return audioCtx;
+}
+document.addEventListener('click', () => getAudioCtx(), { once: true });
+document.addEventListener('touchstart', () => getAudioCtx(), { once: true, passive: true });
+
+function beep(freq, duration, vol, delay) {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  const t0 = ctx.currentTime + (delay || 0);
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0, t0);
+  gain.gain.linearRampToValueAtTime(vol, t0 + 0.01);
+  gain.gain.linearRampToValueAtTime(0, t0 + duration / 1000);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(t0);
+  osc.stop(t0 + duration / 1000 + 0.05);
+}
+
+function playNotifySound() {
+  beep(1000, 120, 0.18, 0);
+  beep(1400, 120, 0.14, 0.13);
+}
+
+let ringtoneInterval = null;
+function startRingtone() {
+  if (ringtoneInterval) return;
+  const ring = () => { beep(700, 350, 0.22, 0); beep(900, 350, 0.22, 0.4); };
+  ring();
+  ringtoneInterval = setInterval(ring, 1800);
+}
+function stopRingtone() {
+  if (ringtoneInterval) { clearInterval(ringtoneInterval); ringtoneInterval = null; }
+}
+
+let vibrateInterval = null;
+function startVibration() {
+  if (!navigator.vibrate || vibrateInterval) return;
+  const pattern = [500, 300, 500, 900];
+  navigator.vibrate(pattern);
+  const cycleMs = pattern.reduce((a, b) => a + b, 0);
+  vibrateInterval = setInterval(() => navigator.vibrate(pattern), cycleMs);
+}
+function stopVibration() {
+  if (vibrateInterval) { clearInterval(vibrateInterval); vibrateInterval = null; }
+  if (navigator.vibrate) navigator.vibrate(0);
 }
 
 function previewOf(m) {
@@ -702,7 +770,7 @@ function renderMessageBubble(m, side, isGroup, isChannel = false) {
       inner += renderVoiceBubble(m);
       break;
     case 'audio':
-      inner += `<div class="voice-msg"><button class="voice-play" onclick="playVoice('${esc(m.media_url)}',this)">▶</button><div class="voice-wave">${'<i></i>'.repeat(24)}</div><span class="voice-dur">${fmtDur(m.duration || 0)}</span></div><audio src="${esc(m.media_url)}" preload="metadata"></audio>`;
+      inner += `<div class="voice-msg"><button class="voice-play" onclick="playVoice('${esc(m.media_url)}',this)">▶</button><div class="voice-wave">${'<i></i>'.repeat(24)}</div><span class="voice-dur">${fmtDur(m.duration || 0)}</span><audio src="${esc(m.media_url)}" preload="metadata"></audio></div>`;
       break;
     case 'file':
       inner += `<a class="file-attach" href="${esc(m.media_url)}" download="${esc(m.media_name || 'file')}"><span class="file-ico">📄</span><span><div>${esc(m.media_name || 'File')}</div><div class="file-meta">${fmtSize(m.media_size || 0)} — Click to download</div></span></a>`;
@@ -1150,8 +1218,8 @@ function renderVoiceBubble(m) {
     <div class="voice-wave">${'<i></i>'.repeat(24)}</div>
     <span class="voice-dur">${fmtDur(m.duration || 0)}</span>
     <button class="vt-btn" title="Voice to text 🤖" onclick="voiceToText('${esc(m.media_url)}')">🤖</button>
-  </div>
-  <audio src="${esc(m.media_url)}" preload="metadata"></audio>`;
+    <audio src="${esc(m.media_url)}" preload="metadata"></audio>
+  </div>`;
 }
 
 function playVoice(url, btn) {
@@ -1442,7 +1510,7 @@ function openStoryCreator() {
     $('stText') && ($('stText').value = '');
     $('stCaption') && ($('stCaption').value = '');
     $('stTags') && ($('stTags').value = '');
-    $('stBg') && ($('stBg').value = '#075E54');
+    $('stBg') && ($('stBg').value = '#201a0d');
     if ($('stMedia')) $('stMedia').value = '';
   }, 30);
 }
@@ -1459,7 +1527,7 @@ async function postStory() {
   const text = $('stText').value.trim();
   const caption = $('stCaption').value.trim();
   const tags = $('stTags').value.trim();
-  const bg = $('stBg').value || '#075E54';
+  const bg = $('stBg').value || '#201a0d';
   const file = $('stMedia').files ? $('stMedia').files[0] : null;
   if (type === 'text' && !text) { toast('Story text likho! ✍️', 'error'); return; }
   if (type !== 'text' && !file) { toast('Image/video select karo! 🖼️', 'error'); return; }
@@ -1499,7 +1567,7 @@ function renderStoriesBar() {
     const hasNew = !grp.all_viewed && !isMe;
     const isHighlight = grp.stories.every(s => s.is_highlight);
     const ringClass = hasNew ? '' : 'viewed';
-    const ringStyle = hasNew ? 'background:linear-gradient(45deg,#25D366,#128C7E,#25D366)' : '';
+    const ringStyle = hasNew ? 'background:linear-gradient(45deg,#D9B872,#B8935A,#D9B872)' : '';
     const hasImg = !!(grp.profile_pic);
     const inner = hasImg ? `<img src="${esc(grp.profile_pic)}" alt="">` : `<span class="story-initial">${esc(initialOf(grp.username))}</span>`;
     html += `
@@ -1539,7 +1607,7 @@ function renderCurrentStory() {
   /* content */
   const c = $('svContent');
   if (st.type === 'text') {
-    c.innerHTML = `<div class="st-text" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:36px;background:${esc(st.background || '#075E54')};color:#fff;font-size:24px;font-weight:600;text-align:center;word-break:break-word">${esc(st.content || '')}</div>`;
+    c.innerHTML = `<div class="st-text" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:36px;background:${esc(st.background || '#201a0d')};color:#fff;font-size:24px;font-weight:600;text-align:center;word-break:break-word">${esc(st.content || '')}</div>`;
   } else if (st.type === 'image') {
     c.innerHTML = `<img src="${esc(st.media_url)}" alt="story">`;
   } else {
@@ -2185,7 +2253,7 @@ function applyWallpaper() {
   if (!c) return;
   const WPS = {
     'solid-1': '#efe7dd', 'solid-2': '#d1e7dd', 'solid-3': '#e7d8d1',
-    'solid-4': '#d1d8e7', 'solid-5': '#0b141a', 'solid-6': '#16262e',
+    'solid-4': '#d1d8e7', 'solid-5': '#0a0a0a', 'solid-6': '#1a1508',
     'wp-img-1': 'url("https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=800")',
     'wp-img-2': 'url("https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800")',
     'wp-img-3': 'url("https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=800")',
@@ -2221,8 +2289,44 @@ async function onWallpaperPicked(e) {
 
 /* ---------------- WEBRTC CALLS ---------------- */
 const RTC_CONFIG = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+  ]
 };
+let facingMode = 'user';
+
+async function switchCamera() {
+  if (!localStream || !currentCall || currentCall.type !== 'video') return;
+  const newFacing = facingMode === 'user' ? 'environment' : 'user';
+  try {
+    const oldTrack = localStream.getVideoTracks()[0];
+    if (oldTrack) { oldTrack.stop(); localStream.removeTrack(oldTrack); }
+
+    let newStream;
+    try {
+      newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: newFacing } }, audio: false });
+    } catch (err) {
+      newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: newFacing } }, audio: false });
+    }
+    const newTrack = newStream.getVideoTracks()[0];
+    if (!newTrack) throw new Error('Camera nahi mila');
+    localStream.addTrack(newTrack);
+    if (peerConnection) {
+      const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+      if (sender) await sender.replaceTrack(newTrack);
+    }
+    const lv = $('localVideo');
+    if (lv) lv.srcObject = localStream;
+    facingMode = newFacing;
+    toast(facingMode === 'environment' ? '📷 Back camera' : '🤳 Front camera', 'info', 1200);
+  } catch (e) {
+    toast('⚠️ Camera switch nahi ho saka (' + e.message + ')', 'error');
+  }
+}
 
 async function startCall(type) {
   if (!currentChatUser) { toast('Calls sirf personal chats me! 📞', 'info'); return; }
@@ -2251,6 +2355,9 @@ function showCallUI(type, name, status) {
   $('callModal').classList.add('open');
   $('btnCam').classList.toggle('hidden', type !== 'video');
   $('btnScreen').classList.toggle('hidden', type !== 'video');
+  const swCamBtn = $('btnSwitchCam');
+  if (swCamBtn) swCamBtn.classList.toggle('hidden', type !== 'video');
+  facingMode = 'user';
   const vids = $('callVideos');
   if (vids) vids.classList.toggle('hidden', type !== 'video');
   const timerEl = $('callTimer');
@@ -2269,12 +2376,16 @@ function showIncomingCall(d) {
   $('incName').textContent = from.username || 'Unknown';
   $('incType').textContent = (d.callType === 'video' ? '🎥 Incoming video call…' : '📞 Incoming voice call…');
   $('incomingCall').classList.add('show');
+  startRingtone();
+  startVibration();
   /* missed call notification if not answered in 30s */
   incomingCallData.missedTimer = setTimeout(() => rejectIncomingCall(true), 30000);
 }
 
 async function acceptIncomingCall() {
   if (!incomingCallData) return;
+  stopRingtone();
+  stopVibration();
   clearTimeout(incomingCallData.missedTimer);
   const d = incomingCallData;
   $('incomingCall').classList.remove('show');
@@ -2291,6 +2402,8 @@ async function acceptIncomingCall() {
 
 function rejectIncomingCall(silent) {
   if (!incomingCallData) return;
+  stopRingtone();
+  stopVibration();
   clearTimeout(incomingCallData.missedTimer);
   socket.emit('reject-call', { to: incomingCallData.from, callId: incomingCallData.callId });
   $('incomingCall').classList.remove('show');
@@ -2302,6 +2415,8 @@ async function endCall() {
   if (currentCall) {
     socket.emit('end-call', { to: currentCall.with, callId: currentCall.callId });
   }
+  stopRingtone();
+  stopVibration();
   hideCallUI();
   cleanupCall();
 }
@@ -2542,14 +2657,32 @@ async function toggle2FA() {
       await api('/api/2fa/disable', { method: 'POST', body: {} });
       ME.two_fa_enabled = false;
       toast('2FA disabled', 'info');
+      openSettings();
     } else {
       const data = await api('/api/2fa/enable', { method: 'POST', body: {} });
+      /* Show QR code in a new tab so the user can scan it with Google Authenticator / Authy */
+      const w = window.open('', '_blank');
+      if (w) {
+        w.document.write(`
+          <div style="font-family:sans-serif;text-align:center;padding:24px;">
+            <h2>C$K4 Chat — 2FA Setup</h2>
+            <p>Google Authenticator ya Authy app se yeh QR code scan karein:</p>
+            <img src="${data.qr}" style="width:220px;height:220px;" />
+            <p>Ya manually yeh secret add karein:</p>
+            <code style="font-size:16px;background:#eee;padding:6px 10px;border-radius:6px;">${data.secret}</code>
+          </div>`);
+      } else {
+        toast('⚠️ Popup blocked — allow popups aur dobara try karein', 'error', 4000);
+        return;
+      }
+      const code = prompt('QR scan karne ke baad app me jo 6-digit code aaya, wo yahan likhein:');
+      if (!code) { toast('2FA setup cancel ho gaya', 'info'); openSettings(); return; }
+      await api('/api/2fa/verify-enable', { method: 'POST', body: { code: code.trim() } });
       ME.two_fa_enabled = true;
-      toast(`🔐 2FA ON! Backup code: ${data.code} — save kar lo!`, 'success', 8000);
-      prompt('🔐 2FA backup code — save kar lo (login ke waqt poocha jayega):', data.code);
+      toast('🔐 2FA enabled ✅', 'success');
+      openSettings();
     }
-    openSettings();
-  } catch (e) { toast(e.message, 'error'); }
+  } catch (e) { toast(e.message, 'error'); openSettings(); }
 }
 
 async function toggleAutoReply() {
@@ -2762,3 +2895,80 @@ window.addEventListener('DOMContentLoaded', (e) => boot());
   console.log('[C$K4 v5.1] Mobile enhancements active');
 })();
 
+
+/* ---------------- PULL-TO-REFRESH (mobile, smart — no full page reload) ---------------- */
+(function setupPullToRefresh() {
+  const REFRESH_THRESHOLD = 70;
+  const containers = ['chatList', 'messagesContainer'];
+
+  async function doSmartRefresh(id) {
+    if (id === 'chatList') {
+      await Promise.all([loadUsers(), loadGroups(), loadChannels()]);
+    } else if (id === 'messagesContainer') {
+      if (currentChatUser) await loadMessages(currentChatUser.id);
+      else if (currentGroup) await loadGroupMessages(currentGroup.id);
+      else if (currentChannel) await loadChannelMessages(currentChannel.id);
+    }
+  }
+
+  containers.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let startY = 0, pulling = false, refreshing = false, indicator = null;
+
+    function ensureIndicator() {
+      if (indicator) return indicator;
+      indicator = document.createElement('div');
+      indicator.className = 'ptr-indicator';
+      indicator.style.cssText = 'text-align:center;font-size:12px;color:var(--text-secondary);padding:8px;display:flex;align-items:center;justify-content:center;gap:6px;';
+      indicator.innerHTML = '<span class="ptr-icon" style="display:inline-block;transition:transform .15s;">↓</span><span class="ptr-label">Refresh ke liye chhodein</span>';
+      el.prepend(indicator);
+      return indicator;
+    }
+
+    el.addEventListener('touchstart', (e) => {
+      if (refreshing) { pulling = false; return; }
+      if (el.scrollTop <= 0) {
+        startY = e.touches[0].clientY;
+        pulling = true;
+      } else {
+        pulling = false;
+      }
+    }, { passive: true });
+
+    el.addEventListener('touchmove', (e) => {
+      if (!pulling || refreshing) return;
+      const diff = e.touches[0].clientY - startY;
+      if (diff > 10 && el.scrollTop <= 0) {
+        const ind = ensureIndicator();
+        const icon = ind.querySelector('.ptr-icon');
+        const label = ind.querySelector('.ptr-label');
+        if (diff > REFRESH_THRESHOLD) {
+          icon.style.transform = 'rotate(180deg)';
+          label.textContent = 'Chhod dein — refresh hoga';
+        } else {
+          icon.style.transform = 'rotate(0deg)';
+          label.textContent = 'Refresh ke liye chhodein';
+        }
+      }
+    }, { passive: true });
+
+    el.addEventListener('touchend', async (e) => {
+      if (!pulling || refreshing) { pulling = false; return; }
+      pulling = false;
+      const diff = (e.changedTouches[0].clientY - startY);
+      if (diff > REFRESH_THRESHOLD && el.scrollTop <= 0) {
+        refreshing = true;
+        const ind = ensureIndicator();
+        ind.innerHTML = '<span class="ptr-icon" style="display:inline-block;animation:ptrSpin .7s linear infinite;">↻</span><span class="ptr-label">Refresh ho raha hai…</span>';
+        try {
+          await doSmartRefresh(id);
+        } catch {}
+        if (indicator) { indicator.remove(); indicator = null; }
+        refreshing = false;
+      } else if (indicator) {
+        indicator.remove(); indicator = null;
+      }
+    }, { passive: true });
+  });
+})();
