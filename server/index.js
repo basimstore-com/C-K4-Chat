@@ -88,7 +88,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 const apiLimiter = rateLimit({ windowMs: 15*60*1000, max: 400, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests, please slow down.' } });
-const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 15, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many login attempts. Try again later.' } });
+const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 50, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many login attempts. Try again later.' } });
 app.use('/api/', apiLimiter);
 
 /* ---------------- PATHS ---------------- */
@@ -159,7 +159,6 @@ function authMiddleware(req, res, next) {
 }
 async function adminOnly(req, res, next) {
   try {
-    /* Do not trust the isAdmin flag inside an old JWT. Always re-check the DB. */
     const user = await getQuery('SELECT is_admin FROM users WHERE id=?', [req.user?.id]);
     if (!user || !user.is_admin) return res.status(403).json({ error: 'Admin access required' });
     req.user.isAdmin = true;
@@ -224,8 +223,8 @@ const upload = multer({
 });
 
 /* ---------------- ONLINE USERS ---------------- */
-const onlineUsers = new Map();      // userId -> socketId
-const userSockets = new Map();      // userId -> Set(socketId)  (multi-device)
+const onlineUsers = new Map();
+const userSockets = new Map();
 const roomFor = id => `user_${id}`;
 
 function emitToUser(userId, event, payload) {
@@ -526,14 +525,11 @@ CREATE INDEX IF NOT EXISTS idx_pollvotes   ON poll_votes(poll_id);
 CREATE INDEX IF NOT EXISTS idx_reactions_msg ON message_reactions(message_id);
 `;
 
-/* There's a known typo trap in schema strings — we run with a safe executor that fixes the typo */
 function initDB() {
   return new Promise((resolve, reject) => {
-    const fixed = SCHEMA.replace('IF INDIRECT', 'IF NOT EXISTS'); // safety fix
+    const fixed = SCHEMA.replace('IF INDIRECT', 'IF NOT EXISTS');
     db.exec(fixed, async (err) => {
       if (err) return reject(err);
-      /* Older databases pre-date media metadata on group messages. Add the
-         columns without requiring users to delete their existing database. */
       try {
         const columns = await allQuery('PRAGMA table_info(group_messages)');
         const existing = new Set(columns.map(c => c.name));
@@ -550,8 +546,6 @@ function initDB() {
         await runQuery('CREATE TABLE IF NOT EXISTS message_reactions (id INTEGER PRIMARY KEY AUTOINCREMENT, message_id TEXT NOT NULL, user_id TEXT NOT NULL, emoji TEXT NOT NULL, created_at INTEGER DEFAULT 0, UNIQUE(message_id, user_id))');
         await runQuery('CREATE INDEX IF NOT EXISTS idx_reactions_msg ON message_reactions(message_id)');
 
-        /* Older databases pre-date TOTP-based 2FA. Add the secret column without
-           requiring users to delete their existing database. */
         const userCols = await allQuery('PRAGMA table_info(users)');
         const userColNames = new Set(userCols.map(c => c.name));
         if (!userColNames.has('two_fa_secret')) {
@@ -620,10 +614,8 @@ io.on('connection', async (socket) => {
   userSockets.get(uid).add(socket.id);
   onlineUsers.set(uid, socket.id);
 
-  /* join personal room */
   socket.join(roomFor(uid));
 
-  /* auto-join all groups + subscribed channels rooms (so messages reach without manual join) */
   try {
     const myGroups = await allQuery('SELECT group_id FROM group_members WHERE user_id=?', [uid]);
     for (const g of myGroups) socket.join(`group_${g.group_id}`);
@@ -631,11 +623,9 @@ io.on('connection', async (socket) => {
     for (const c of myChannels) socket.join(`channel_${c.id}`);
   } catch (e) { console.error('[auto-join-rooms]', e.message); }
 
-  /* set online in DB */
   await runQuery('UPDATE users SET last_seen=? WHERE id=?', [Date.now(), uid]);
   emitToUser(uid, 'user-online', { userId: uid });
 
-  /* --- OFFLINE MESSAGE DELIVERY (fix from reference code) --- */
   try {
     const offlines = await allQuery('SELECT * FROM offline_messages WHERE to_user=?', [uid]);
     for (const om of offlines) {
@@ -652,17 +642,14 @@ io.on('connection', async (socket) => {
     if (offlines.length) console.log(`  [SOCKET] Delivered ${offlines.length} offline messages to ${uid}`);
   } catch (e) { console.error('[offline-delivery]', e.message); }
 
-  /* broadcast presence to everyone */
   socket.broadcast.emit('presence', { userId: uid, online: true, last_seen: Date.now() });
   io.emit('online-count', { count: onlineUsers.size });
 
-  /* ---- TYPING INDICATOR ---- */
   socket.on('typing', (data) => {
     const to = String(data?.to || '');
     if (to) socket.to(roomFor(to)).emit('typing', { from: uid, typing: !!data.typing, chatType: data.chatType || 'direct' });
   });
 
-  /* ---- SEND DIRECT MESSAGE ---- */
   socket.on('send-message', async (data) => {
     try {
       const { to, message, type = 'text', media_url = '', media_name = '', media_size = 0, duration = 0, reply_to = null, view_once = false, forwarded = false, scheduled_at = 0 } = data || {};
@@ -679,7 +666,6 @@ io.on('connection', async (socket) => {
         return;
       }
 
-      /* Both sides of a block must stop delivery. */
       const blocked = await getQuery(`SELECT id FROM blocked_users
         WHERE (user_id=? AND blocked_user=?) OR (user_id=? AND blocked_user=?)`,
         [toUser, uid, uid, toUser]);
@@ -703,11 +689,9 @@ io.on('connection', async (socket) => {
         await runQuery('UPDATE messages SET delivered=1 WHERE id=?', [id]);
         socket.emit('message-status', { id, status: 'delivered' });
       } else {
-        /* queue for offline delivery */
         await runQuery(`INSERT INTO offline_messages (id, from_user, to_user, message, type, media_url, payload, created_at) VALUES (?,?,?,?,?,?,?,?)`,
           [id, uid, toUser, enc, type, media_url, JSON.stringify({ media_name, media_size, duration, reply_to, forwarded, view_once }), Date.now()]);
         socket.emit('message-status', { id, status: 'queued' });
-        /* ---- AUTO-REPLY (Feature 38) ---- */
         const target = await getQuery('SELECT id, auto_reply_enabled, auto_reply_message, username FROM users WHERE id=?', [toUser]);
         if (target && target.auto_reply_enabled) {
           const arId = uuidv4();
@@ -718,10 +702,8 @@ io.on('connection', async (socket) => {
         }
       }
 
-      /* update sender's own view */
       socket.emit('message-sent', msgPayload);
 
-      /* ---- AI BOT auto-response ---- */
       if (toUser === BOT_USER_ID) {
         const botReply = aiReply(body);
         const bId = uuidv4();
@@ -737,7 +719,6 @@ io.on('connection', async (socket) => {
     }
   });
 
-  /* ---- SEND GROUP MESSAGE ---- */
   socket.on('send-group-message', async (data) => {
     try {
       const { group_id, message, type = 'text', media_url = '', media_name = '', media_size = 0, duration = 0, reply_to = null, forwarded = false, view_once = false } = data || {};
@@ -760,7 +741,6 @@ io.on('connection', async (socket) => {
     } catch (e) { console.error('[send-group-message]', e.message); }
   });
 
-  /* ---- EDIT MESSAGE ---- */
   socket.on('edit-message', async (data) => {
     try {
       const { id, message } = data || {};
@@ -774,10 +754,8 @@ io.on('connection', async (socket) => {
     } catch (e) { console.error('[edit-message]', e.message); }
   });
 
-  /* ---- DELETE MESSAGE ---- */
   socket.on('delete-message', async (data) => { try { await deleteMessageInternal(uid, data); } catch (e) { console.error('[delete-message]', e.message); } });
 
-  /* ---- MARK SEEN ---- */
   socket.on('mark-seen', async (data) => {
     try {
       const from = String(data?.from || '');
@@ -787,7 +765,6 @@ io.on('connection', async (socket) => {
     } catch (e) { console.error('[mark-seen]', e.message); }
   });
 
-  /* ---- REACTIONS ---- */
   socket.on('react-message', async (data) => {
     try {
       const { id, emoji } = data || {};
@@ -813,7 +790,6 @@ io.on('connection', async (socket) => {
     } catch (e) { console.error('[react]', e.message); }
   });
 
-  /* ---- PIN MESSAGE (socket) ---- */
   socket.on('pin-message', async (data) => {
     try {
       const { id } = data || {};
@@ -825,7 +801,6 @@ io.on('connection', async (socket) => {
     } catch (e) { console.error('[pin]', e.message); }
   });
 
-  /* ---- LIVE LOCATION ---- */
   socket.on('share-location', async (data) => {
     try {
       const { to, lat, lng, live = false, duration_min = 15 } = data || {};
@@ -842,7 +817,6 @@ io.on('connection', async (socket) => {
     } catch (e) { console.error('[share-location]', e.message); }
   });
 
-  /* ---- CHANNEL MESSAGE ---- */
   socket.on('send-channel-message', async (data) => {
     try {
       const { channel_id, message, media_url = '' } = data || {};
@@ -862,7 +836,6 @@ io.on('connection', async (socket) => {
     } catch (e) { console.error('[channel-msg]', e.message); }
   });
 
-  /* ---- INSTANT VOTE (real-time poll, fix: awaited queries) ---- */
   socket.on('poll-vote', async (data) => {
     try {
       const { poll_id, option_index } = data || {};
@@ -871,7 +844,6 @@ io.on('connection', async (socket) => {
       const existing = await getQuery('SELECT id FROM poll_votes WHERE poll_id=? AND user_id=?', [poll_id, uid]);
       if (existing) return socket.emit('error-message', { error: 'You already voted' });
       await runQuery('INSERT INTO poll_votes (poll_id, user_id, option_index, voted_at) VALUES (?,?,?,?)', [poll_id, uid, option_index, Date.now()]);
-      /* emit updated results to everyone in poll room */
       const votes = await allQuery('SELECT user_id, option_index FROM poll_votes WHERE poll_id=?', [poll_id]);
       const counts = {};
       votes.forEach(v => counts[v.option_index] = (counts[v.option_index] || 0) + 1);
@@ -880,7 +852,6 @@ io.on('connection', async (socket) => {
     } catch (e) { console.error('[poll-vote]', e.message); }
   });
 
-  /* ---- GAME MOVE (fix: awaited queries) ---- */
   socket.on('game-move', async (data) => {
     try {
       const { game_id, position } = data || {};
@@ -906,7 +877,6 @@ io.on('connection', async (socket) => {
     } catch (e) { console.error('[game-move]', e.message); }
   });
 
-  /* ---- WEBRTC CALLS (voice/video/screen) ---- */
   socket.on('call-user', (data) => {
     const { to, callType, offer, callId, group_id } = data || {};
     if (!to) return;
@@ -931,14 +901,6 @@ io.on('connection', async (socket) => {
     socket.to(roomFor(String(to))).emit('webrtc-signal', { from: uid, signal });
   });
 
-  /* ---- GROUP CALL INVITES ---- */
-  socket.on('group-call-invite', (data) => {
-    const { to, group_id, callId, callType } = data || {};
-    if (!to) return;
-    socket.to(roomFor(String(to))).emit('incoming-group-call', { from: uid, group_id, callId, callType });
-  });
-
-  /* ---- ROOM MANAGEMENT (groups / channels / polls / games) ---- */
   socket.on('join-group', async (d) => {
     if (!d?.group_id) return;
     const member = await getQuery('SELECT id FROM group_members WHERE group_id=? AND user_id=?', [d.group_id, uid]);
@@ -954,7 +916,6 @@ io.on('connection', async (socket) => {
   socket.on('join-poll',    (d) => { if (d && d.poll_id)    socket.join(`poll_${d.poll_id}`); });
   socket.on('join-game',    (d) => { if (d && d.game_id)    socket.join(`game_${d.game_id}`); });
 
-  /* ---- DISCONNECT ---- */
   socket.on('disconnect', async () => {
     const set = userSockets.get(uid);
     if (set) {
@@ -963,7 +924,6 @@ io.on('connection', async (socket) => {
         userSockets.delete(uid);
         onlineUsers.delete(uid);
         await runQuery('UPDATE users SET last_seen=? WHERE id=?', [Date.now(), uid]);
-        try { await runQuery('UPDATE users SET last_seen=? WHERE id=?', [Date.now(), uid]); } catch (e) {}
         socket.broadcast.emit('presence', { userId: uid, online: false, last_seen: Date.now() });
         io.emit('online-count', { count: onlineUsers.size });
       }
@@ -994,7 +954,6 @@ async function deleteMessageInternal(uid, data) {
   return true;
 }
 
-/* reverse geocode via OpenStreetMap Nominatim (no API key) */
 async function reverseGeocode(lat, lng) {
   if (!axios) return null;
   try {
@@ -1050,7 +1009,6 @@ function aiReply(text) {
   return `Aap ne kaha: "${text}" 🤖 Main abhi seekh raha hoon! "help" likho to commands dekho.`;
 }
 
-/* Tic-tac-toe winner check: returns 'X' | 'O' | null */
 function checkWinnerTTT(board) {
   const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
   for (const [a,b,c] of lines) {
@@ -1148,14 +1106,12 @@ app.post('/api/logout', authMiddleware, async (req, res) => {
   res.json({ message: 'Logged out successfully' });
 });
 
-/* ---- 2FA (TOTP — Google Authenticator / Authy compatible) ---- */
 app.post('/api/2fa/enable', authMiddleware, async (req, res) => {
   try {
     const secret = authenticator.generateSecret();
     const user = await getQuery('SELECT email, username FROM users WHERE id=?', [req.user.id]);
     const otpauth = authenticator.keyuri(user.email || user.username, 'C$K4 Chat', secret);
     const qr = await QRCode.toDataURL(otpauth);
-    /* Save secret but keep two_fa_enabled=0 until the user verifies a code from their app */
     await runQuery('UPDATE users SET two_fa_secret=? WHERE id=?', [secret, req.user.id]);
     await audit(req.user.id, '2fa-enable-pending', '');
     res.json({ message: 'Google Authenticator / Authy se QR scan karke code verify karein', secret, qr });
@@ -1188,9 +1144,6 @@ app.post('/api/2fa/verify', authMiddleware, async (req, res) => {
   res.json({ message: '2FA verified ✅' });
 });
 
-/* ============================================================
-   PROFILE / SETTINGS APIs
-   ============================================================ */
 app.post('/api/profile', authMiddleware, upload.single('profile'), async (req, res) => {
   try {
     const { username, bio, phone } = req.body || {};
@@ -1278,9 +1231,6 @@ app.delete('/api/quick-reply/:id', authMiddleware, async (req, res) => {
   res.json({ message: 'Quick reply deleted' });
 });
 
-/* ============================================================
-   USERS / SOCIAL APIs
-   ============================================================ */
 app.get('/api/users', authMiddleware, async (req, res) => {
   try {
     const search = clean(req.query.search || '');
@@ -1335,7 +1285,6 @@ app.post('/api/report', authMiddleware, async (req, res) => {
   res.status(201).json({ message: 'Report submitted ✅ Admins will review it.' });
 });
 
-/* ---- NOTIFICATIONS ---- */
 app.get('/api/notifications', authMiddleware, async (req, res) => {
   const rows = await allQuery('SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100', [req.user.id]);
   const unread = rows.filter(r => !r.read).length;
@@ -1351,9 +1300,6 @@ app.post('/api/notifications/read', authMiddleware, async (req, res) => {
   res.json({ message: 'Notifications marked read' });
 });
 
-/* ============================================================
-   MESSAGING APIs
-   ============================================================ */
 function decorateMessage(row) {
   if (!row) return row;
   const out = { ...row };
@@ -1408,7 +1354,6 @@ app.post('/api/edit-message', authMiddleware, async (req, res) => {
   res.json({ message: 'Message edited ✅' });
 });
 
-/* delete for me / for everyone — REST version */
 app.post('/api/delete-for-everyone', authMiddleware, async (req, res) => {
   try {
     const { id } = req.body || {};
@@ -1425,7 +1370,7 @@ app.post('/api/delete-for-me', authMiddleware, async (req, res) => {
   try {
     const { id } = req.body || {};
     const msg = await getQuery('SELECT * FROM messages WHERE id=?', [id]);
-    if (!msg) return res.status(404).json({ error: 'Message not not found' });
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
     if (msg.from_user !== req.user.id && msg.to_user !== req.user.id) return res.status(403).json({ error: 'Not your message' });
     await runQuery('DELETE FROM messages WHERE id=?', [id]);
     res.json({ message: 'Deleted for you ✅' });
@@ -1453,8 +1398,6 @@ app.post('/api/view-once', authMiddleware, async (req, res) => {
     const source = msg || groupMsg;
     const responsePayload = { message: decryptText(source.message), media_url: source.media_url, type: source.type, duration: source.duration, media_name: source.media_name, media_size: source.media_size };
 
-    /* Actually delete the media from disk + scrub DB so it can never be fetched again.
-       Only do this for the recipient's view (not the sender re-checking their own sent message). */
     const isRecipientViewing = groupMsg ? (groupMsg.sender_id !== req.user.id) : (msg.to_user === req.user.id);
     if (isRecipientViewing && source.media_url) {
       const relative = String(source.media_url).replace(/^\/uploads\//, '');
@@ -1543,9 +1486,6 @@ app.delete('/api/schedule/:id', authMiddleware, async (req, res) => {
   res.json({ message: 'Scheduled message cancelled' });
 });
 
-/* ============================================================
-   GROUPS APIs
-   ============================================================ */
 app.post('/api/group', authMiddleware, upload.single('avatar'), async (req, res) => {
   try {
     const name = clean(req.body.name || '');
@@ -1667,9 +1607,6 @@ app.get('/api/group/messages/:groupId', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Failed to load group messages' }); }
 });
 
-/* ============================================================
-   STORIES APIs (24h expiry, views, highlights, tags)
-   ============================================================ */
 app.post('/api/story', authMiddleware, upload.single('story'), async (req, res) => {
   try {
     const type = clean(req.body.type || (req.file ? 'image' : 'text'));
@@ -1685,7 +1622,6 @@ app.post('/api/story', authMiddleware, upload.single('story'), async (req, res) 
     const result = await runQuery(`INSERT INTO stories (id, user_id, type, content, media_url, caption, background, tags, expires_at, created_at)
       VALUES (?,?,?,?,?,?,?,?,?,?)`,
       [id, req.user.id, type, encryptText(text), mediaUrl, caption, background, JSON.stringify(tags), expires, Date.now()]);
-    /* notify tagged users (fixed: result captured properly) */
     for (const t of tags) {
       if (t !== req.user.id) pushNotification(t, 'story-tag', 'You were tagged in a story', `${req.user.username} tagged you in a story 🏷️`, { story_id: id });
     }
@@ -1709,7 +1645,6 @@ app.get('/api/stories', authMiddleware, async (req, res) => {
       if (!s.viewed && !s.is_highlight) grouped[key].all_viewed = false;
       grouped[key].stories.push(s);
     }
-    /* also show "my story" ring if I have stories */
     res.json({ stories: Object.values(grouped) });
   } catch (e) { res.status(500).json({ error: 'Failed to load stories' }); }
 });
@@ -1766,9 +1701,6 @@ app.get('/api/highlights/:userId', authMiddleware, async (req, res) => {
   res.json({ highlights: rows });
 });
 
-/* ============================================================
-   CHANNELS APIs
-   ============================================================ */
 app.post('/api/channel', authMiddleware, async (req, res) => {
   const name = clean(req.body.name || '');
   const desc = clean(req.body.description || '');
@@ -1811,9 +1743,6 @@ app.get('/api/channel/messages/:id', authMiddleware, async (req, res) => {
   res.json({ messages: rows.reverse().map(decorateMessage), channel: ch });
 });
 
-/* ============================================================
-   POLLS APIs (+ group polls, instant voting)
-   ============================================================ */
 app.post('/api/poll', authMiddleware, async (req, res) => {
   try {
     const question = clean(req.body.question || '');
@@ -1826,7 +1755,6 @@ app.post('/api/poll', authMiddleware, async (req, res) => {
     await runQuery(`INSERT INTO polls (id, creator_id, context_type, context_id, question, options, anonymous, multi_choice, created_at, expires_at)
       VALUES (?,?,?,?,?,?,?,?,?,?)`,
       [id, req.user.id, context_type, context_id, question, JSON.stringify(options), req.body.anonymous ? 1 : 0, req.body.multi_choice ? 1 : 0, Date.now(), expires]);
-    /* poll message into chat/group — poll_id media_url me store hota hai (history me renderPollCard isi se poll fetch karta hai) */
     const mid = uuidv4();
     if (context_type === 'group' && context_id) {
       await runQuery(`INSERT INTO group_messages (id, group_id, sender_id, message, type, media_url, timestamp) VALUES (?,?,?,?,?,?,?)`,
@@ -1836,15 +1764,13 @@ app.post('/api/poll', authMiddleware, async (req, res) => {
       await runQuery(`INSERT INTO messages (id, from_user, to_user, message, type, media_url, timestamp) VALUES (?,?,?,?,?,?,?)`,
         [mid, req.user.id, context_id, encryptText(`📊 POLL: ${question}`), 'poll', id, Date.now()]);
       emitToUser(context_id, 'new-message', { id: mid, from_user: req.user.id, to_user: context_id, message: `📊 POLL: ${question}`, type: 'poll', poll_id: id, timestamp: Date.now() });
-      socketEmitSelf(req.user.id, 'new-message', { id: mid, from_user: req.user.id, to_user: context_id, message: `📊 POLL: ${question}`, type: 'poll', poll_id: id, timestamp: Date.now() });
+      emitToUser(req.user.id, 'new-message', { id: mid, from_user: req.user.id, to_user: context_id, message: `📊 POLL: ${question}`, type: 'poll', poll_id: id, timestamp: Date.now() });
     }
     res.status(201).json({ message: 'Poll created 📊', poll_id: id, options });
   } catch (e) { console.error('[poll]', e.message); res.status(500).json({ error: 'Poll creation failed' }); }
 });
 
-function socketEmitSelf(userId, event, payload) { emitToUser(userId, event, payload); }
-
-app.get('/api/poll/:id', authQuery, async (req, res) => {
+app.get('/api/poll/:id', authMiddleware, async (req, res) => {
   try {
     const poll = await getQuery('SELECT * FROM polls WHERE id=?', [req.params.id]);
     if (!poll) return res.status(404).json({ error: 'Poll not found' });
@@ -1862,8 +1788,6 @@ app.get('/api/poll/:id', authQuery, async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Poll fetch failed' }); }
 });
 
-function authQuery(req, res, next) { return authMiddleware(req, res, next); }
-
 app.post('/api/poll/vote', authMiddleware, async (req, res) => {
   try {
     const { poll_id, option_index } = req.body || {};
@@ -1879,9 +1803,6 @@ app.post('/api/poll/vote', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Vote failed' }); }
 });
 
-/* ============================================================
-   GAMES APIs (tic-tac-toe)
-   ============================================================ */
 app.post('/api/game/create', authMiddleware, async (req, res) => {
   try {
     const id = uuidv4();
@@ -1919,9 +1840,6 @@ app.get('/api/game/:id', authMiddleware, async (req, res) => {
   res.json({ game: { ...g, player1_name: p1 ? p1.username : '?', player2_name: p2 ? p2.username : 'Waiting...' } });
 });
 
-/* ============================================================
-   UPLOAD / LOCATION / WEATHER / AI CHAT / BACKUP
-   ============================================================ */
 app.post('/api/upload', authMiddleware, upload.array('files', 10), async (req, res) => {
   try {
     if (!req.files || !req.files.length) return res.status(400).json({ error: 'No files uploaded' });
@@ -1965,7 +1883,6 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
   res.json({ reply, message_id: id });
 });
 
-/* ---- CHAT BACKUP (JSON export) ---- */
 app.get('/api/backup', authMiddleware, async (req, res) => {
   try {
     const me = await getQuery('SELECT * FROM users WHERE id=?', [req.user.id]);
@@ -1990,9 +1907,6 @@ app.get('/api/backup', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Backup failed' }); }
 });
 
-/* ============================================================
-   ADMIN APIs (admin panel)
-   ============================================================ */
 app.get('/api/admin/stats', authMiddleware, adminOnly, async (req, res) => {
   try {
     const users = await getQuery('SELECT COUNT(*) c FROM users');
@@ -2132,9 +2046,6 @@ app.get('/api/admin/backup', authMiddleware, adminOnly, async (req, res) => {
 /* ============================================================
    STATIC FILES
    ============================================================ */
-
-// Explicit admin routes FIRST — guarantees admin.html is served and never
-// falls through to the main app, and stops the browser caching a stale page.
 app.get(['/admin', '/admin/', '/admin/admin.html'], (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.sendFile(path.join(ADMIN_DIR, 'admin.html'));
@@ -2157,7 +2068,6 @@ app.use((req, res, next) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
-/* Error handler */
 app.use((err, req, res, next) => {
   console.error('[error]', err.message);
   if (err instanceof multer.MulterError) {
@@ -2173,7 +2083,6 @@ app.use((err, req, res, next) => {
 /* ============================================================
    CRON JOBS
    ============================================================ */
-/* 1) Scheduled messages sender — every minute */
 cron.schedule('* * * * *', async () => {
   try {
     const due = await allQuery('SELECT * FROM scheduled_messages WHERE sent=0 AND scheduled_at<=?', [Date.now()]);
@@ -2192,7 +2101,6 @@ cron.schedule('* * * * *', async () => {
   } catch (e) { console.error('[cron-scheduled]', e.message); }
 });
 
-/* 2) Full DB backup — every 6 hours */
 cron.schedule('0 */6 * * *', async () => {
   try {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -2201,14 +2109,12 @@ cron.schedule('0 */6 * * *', async () => {
     const dump = { exported_at: new Date().toISOString() };
     for (const t of tables) { try { dump[t] = await allQuery(`SELECT * FROM ${t}`); } catch { dump[t] = []; } }
     await fse.writeJson(dest, dump, { spaces: 2 });
-    /* keep only last 10 backups */
     const files = (await fse.readdir(BACKUP_DIR)).filter(f => f.startsWith('csk4-auto-')).sort();
     while (files.length > 10) await fse.remove(path.join(BACKUP_DIR, files.shift()));
     console.log(`  [CRON] Auto-backup saved: ${path.basename(dest)}`);
   } catch (e) { console.error('[cron-backup]', e.message); }
 });
 
-/* 3) Story expiry cleanup — every hour */
 cron.schedule('0 * * * *', async () => {
   try {
     const expired = await allQuery('SELECT id, media_url FROM stories WHERE expires_at < ? AND expires_at > 0 AND is_highlight=0', [Date.now()]);
@@ -2228,7 +2134,6 @@ async function start() {
   try {
     await initDB();
     await seedUsers();
-    /* assign BOT_USER_ID (Feature: AI Bot) */
     try {
       const botRow = await getQuery('SELECT id FROM users WHERE email=?', ['bot@csk4.com']);
       if (botRow) BOT_USER_ID = botRow.id;
